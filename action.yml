@@ -1,0 +1,5 @@
+name: 'Workload Statistics'
+description: 'Execute TPC-H Q6 and check workload statistics.'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
