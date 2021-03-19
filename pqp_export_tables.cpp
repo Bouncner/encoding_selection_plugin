@@ -1,4 +1,4 @@
-#include "plugin_meta_tables.hpp"
+#include "pqp_export_tables.hpp"
 
 #include "expression/abstract_predicate_expression.hpp"
 #include "expression/expression_utils.hpp"
@@ -805,5 +805,26 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
 
   return output_table;
 }
+
+
+std::string PQPExportTablesPlugin::description() const { return "This is the Hyrise PQPExportTablesPlugin"; }
+
+void PQPExportTablesPlugin::start() {
+  std::cout << "Started PQPExportTablesPlugin" << std::endl;
+
+  // auto projections_table = std::make_shared<MetaPlanCacheProjections>();
+
+  // const auto pqp_cache_snapshot = Hyrise::get().default_pqp_cache->snapshot();
+  // aggregate_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+  // table_scan_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+  // joins_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+  // projections_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+
+  // Hyrise::get().meta_table_manager.add_table(std::move(aggregate_table));
+}
+
+void PQPExportTablesPlugin::stop() {}
+
+EXPORT_PLUGIN(PQPExportTablesPlugin)
 
 }  // namespace opossum

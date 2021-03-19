@@ -1,8 +1,10 @@
 #pragma once
 
-#include "utils/meta_tables/abstract_meta_table.hpp"
 #include "cache/abstract_cache.hpp"
 #include "operators/abstract_operator.hpp"
+#include "utils/abstract_plugin.hpp"
+#include "utils/meta_tables/abstract_meta_table.hpp"
+#include "utils/singleton.hpp"
 
 namespace opossum {
 
@@ -69,6 +71,14 @@ class MetaPlanCacheProjections : public AbstractMetaTable, public MetaPlanCacheO
 
  protected:
   std::shared_ptr<Table> _on_generate() const final;
+};
+
+class PQPExportTablesPlugin : public AbstractPlugin, public Singleton<PQPExportTablesPlugin> {
+ public:
+  PQPExportTablesPlugin();
+  std::string description() const final;
+  void start() final;
+  void stop() final;
 };
 
 }  // namespace opossum
