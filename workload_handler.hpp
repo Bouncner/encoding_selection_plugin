@@ -12,6 +12,8 @@ class MetaWorkloadItems : public AbstractMetaTable {
   MetaWorkloadItems();
   const std::string& name() const final;
 
+  void on_tables_loaded() {}
+
  protected:
   std::shared_ptr<Table> _on_generate() const final;
 };

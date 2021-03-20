@@ -2,6 +2,7 @@
 
 #include "abstract_benchmark_item_runner.hpp"
 #include "benchmark_config.hpp"
+#include "hyrise.hpp"
 #include "tpch/tpch_benchmark_item_runner.hpp"
 #include "tpch/tpch_constants.hpp"
 
@@ -12,8 +13,8 @@ using namespace opossum;  // NOLINT
 
 class TPCHBenchmarkItemExporter : public TPCHBenchmarkItemRunner {
  public:
-  TPCHBenchmarkItemExporter()
-      : TPCHBenchmarkItemRunner(std::shared_ptr<BenchmarkConfig>{}, false, 1.0f, ClusteringConfiguration::None) {}
+  TPCHBenchmarkItemExporter(const std::shared_ptr<BenchmarkConfig>& config)
+      : TPCHBenchmarkItemRunner(config, false, 1.0f, ClusteringConfiguration::None) {}
 
  protected:
   bool _on_execute_item(const BenchmarkItemID item_id, BenchmarkSQLExecutor&) override {
@@ -42,7 +43,8 @@ const std::string& MetaWorkloadItems::name() const {
 std::shared_ptr<Table> MetaWorkloadItems::_on_generate() const {
   auto output_table = std::make_shared<Table>(_column_definitions, TableType::Data, std::nullopt, UseMvcc::Yes);
 
-  auto tpch_item_exporter = TPCHBenchmarkItemExporter{};
+  auto config = std::make_shared<BenchmarkConfig>(BenchmarkConfig::get_default_config());
+  auto tpch_item_exporter = TPCHBenchmarkItemExporter{config};
   for (const auto item : tpch_item_exporter.items()) {
     tpch_item_exporter.execute_item(item);
     output_table->append({pmr_string{"TPC-H"}, pmr_string{tpch_item_exporter.item_name(item)}, 0, pmr_string{"not implemented"}});
@@ -51,21 +53,15 @@ std::shared_ptr<Table> MetaWorkloadItems::_on_generate() const {
   return output_table;
 }
 
+WorkloadHandlerPlugin::WorkloadHandlerPlugin() {}
 
 std::string WorkloadHandlerPlugin::description() const { return "This is the Hyrise WorkloadHandlerPlugin"; }
 
 void WorkloadHandlerPlugin::start() {
   std::cout << "Started WorkloadHandlerPlugin" << std::endl;
 
-  // auto projections_table = std::make_shared<MetaPlanCacheProjections>();
-
-  // const auto pqp_cache_snapshot = Hyrise::get().default_pqp_cache->snapshot();
-  // aggregate_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // table_scan_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // joins_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // projections_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-
-  // Hyrise::get().meta_table_manager.add_table(std::move(aggregate_table));
+  auto workload_items_table = std::make_shared<MetaWorkloadItems>();
+  Hyrise::get().meta_table_manager.add_table(std::move(workload_items_table));
 }
 
 void WorkloadHandlerPlugin::stop() {}

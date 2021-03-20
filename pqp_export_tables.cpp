@@ -806,6 +806,7 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
   return output_table;
 }
 
+PQPExportTablesPlugin::PQPExportTablesPlugin() {}
 
 std::string PQPExportTablesPlugin::description() const { return "This is the Hyrise PQPExportTablesPlugin"; }
 

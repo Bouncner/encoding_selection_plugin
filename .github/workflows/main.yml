@@ -1,0 +1,10 @@
+on: [push]
+
+jobs:
+  simple_test_job:
+    runs-on: ubuntu-latest
+    name: A test job
+    steps:
+    - name: Hello world action step
+      id: hello
+      uses: actions/hyrise_workload_analysis_plugin@v1

@@ -59,4 +59,4 @@ add_plugin(NAME WorkloadStatistics SRCS pqp_export_tables.cpp pqp_export_tables.
 add_plugin(NAME WorkloadHandler SRCS workload_handler.cpp workload_handler.hpp DEPS hyriseServer)
 
 ### Plugin to accept simple commands
-# add_plugin(NAME SimpleExecutor SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
+add_plugin(NAME SimpleExecutor SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
