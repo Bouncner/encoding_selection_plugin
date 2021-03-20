@@ -96,7 +96,7 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
 
 void process_pqp_op(const std::shared_ptr<const AbstractOperator>& op, const pmr_string& query_hex_hash, const std::optional<OperatorType> operator_type,
                  std::unordered_set<std::shared_ptr<const AbstractOperator>>& visited_pqp_nodes,
-                 std::vector<const std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>& gathered_operators) {
+                 std::vector<std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>& gathered_operators) {
   if ((operator_type && op->type() == *operator_type) || 
        // If instances of a particular operator are requested, only collect those
       (!operator_type && !MetaPlanCacheAggregates::detailed_operator_types.contains(op->type())
@@ -120,10 +120,10 @@ void process_pqp_op(const std::shared_ptr<const AbstractOperator>& op, const pmr
   }
 }
 
-std::vector<const std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>
+std::vector<std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>
 get_operators_from_plan_cache(const MetaPlanCacheOperators::PlanCache plan_cache,
                               const std::optional<OperatorType> operator_type) {
-  auto gathered_operators = std::vector<const std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>{};
+  auto gathered_operators = std::vector<std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>{};
   gathered_operators.reserve(plan_cache.size());
 
   for (const auto& [sql_string, snapshot_entry] : plan_cache) {

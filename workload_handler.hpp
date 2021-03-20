@@ -7,9 +7,9 @@
 
 namespace opossum {
 
-class MetaWorkloadItems : public AbstractMetaTable {
+class MetaBenchmarkItems : public AbstractMetaTable {
  public:
-  MetaWorkloadItems();
+  MetaBenchmarkItems();
   const std::string& name() const final;
 
   void on_tables_loaded() {}

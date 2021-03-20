@@ -55,7 +55,7 @@ set(CMAKE_CXX_STANDARD 20)                                                      
 ### Plugin to generate meta tables for exported PQP information
 add_plugin(NAME WorkloadStatistics SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
 
-### Plugin to expose benchmark queries and run TPC-C
+### Plugin to expose benchmark queries as a meta table and run TPC-C
 add_plugin(NAME WorkloadHandler SRCS workload_handler.cpp workload_handler.hpp DEPS hyriseServer)
 
 ### Plugin to accept simple commands
