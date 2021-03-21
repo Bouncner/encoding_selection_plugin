@@ -1,7 +1,7 @@
 #!/bin/sh -l
 
 git clone --recursive https://github.com/Bouncner/hyrise_workload_analysis_plugin.git
-cd hyrise
+cd hyrise_workload_analysis_plugin
 
 ./install_dependencies.sh
 apt-get install psql
