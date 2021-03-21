@@ -6,6 +6,9 @@
 #include "tpch/tpch_benchmark_item_runner.hpp"
 #include "tpch/tpch_constants.hpp"
 
+// Test
+#include "nlohmann/json.hpp"
+
 
 namespace {
 

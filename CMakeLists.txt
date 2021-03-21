@@ -51,7 +51,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)                                             
 set(CMAKE_CXX_STANDARD 20)                                                                          #
 #####################################################################################################
 
-
 ### Plugin to generate meta tables for exported PQP information
 add_plugin(NAME WorkloadStatistics SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
 
