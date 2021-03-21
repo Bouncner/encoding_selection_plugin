@@ -50,7 +50,6 @@ std::shared_ptr<Table> MetaBenchmarkItems::_on_generate() const {
   auto config = std::make_shared<BenchmarkConfig>(BenchmarkConfig::get_default_config());
   auto tpch_item_exporter = TPCHBenchmarkItemExporter{config};
   for (const auto item : tpch_item_exporter.items()) {
-    tpch_item_exporter.execute_item(item);
     const auto item_instances = tpch_item_exporter.get_sql_statements_for_benchmark_item(item);
     for (const auto& item_instance : item_instances) {
       output_table->append({pmr_string{"TPC-H"}, pmr_string{tpch_item_exporter.item_name(item)}, pmr_string{item_instance}});

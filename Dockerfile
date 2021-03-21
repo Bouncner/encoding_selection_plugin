@@ -3,28 +3,13 @@ ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update \
     && apt-get install -y \
-        autoconf \
-        bash-completion \
-        bc \
-        clang-9 \
-        clang-10 \
-        clang-format-9 \
-        clang-format-10 \
-        clang-tidy-9 \
-        clang-tidy-10 \
+        clang-11 \
         cmake \
-        curl \
-        dos2unix \
-        g++-9 \
-        gcc-9 \
-        gcovr \
         git \
-        graphviz \
+        expect \
         libboost1.71-all-dev \
         libhwloc-dev \
         libncurses5-dev \
-        libnuma-dev \
-        libnuma1 \
         libpq-dev \
         libreadline-dev \
         libsqlite3-dev \
@@ -34,18 +19,13 @@ RUN apt-get update \
         man \
         parallel \
         postgresql-server-dev-all \
-        python3 \
-        python3-pip \
         software-properties-common \
         sudo \
-        systemtap \
-        systemtap-sdt-dev \
-        valgrind \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && ln -sf /usr/bin/llvm-symbolizer-3.8 /usr/bin/llvm-symbolizer
 
 ENV OPOSSUM_HEADLESS_SETUP=true
 
-COPY test.sh /test.sh
-ENTRYPOINT ["/test.sh"]
+COPY test_pipeline.sh /test_pipeline.sh
+ENTRYPOINT ["/test_pipeline.sh"]
