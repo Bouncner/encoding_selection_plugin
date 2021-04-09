@@ -44,18 +44,32 @@ include_directories(                                                            
 )                                                                                                   #
                                                                                                     #
 # Global flags and include directories                                                              #
+#   '-Wno-unknown-warning-option' added to avoid "unknown warning group '-Wmaybe-uninitialized'"    #
+#   in fixed_size_byte_aligned_decompressor.hpp                                                     #
 add_compile_options(-pthread -Wall -Wextra -pedantic -Werror -Wno-unused-parameter                  #
--Wno-dollar-in-identifier-extension -Wno-unknown-pragmas)                                           #
+-Wno-dollar-in-identifier-extension -Wno-unknown-pragmas -Wno-unknown-warning-option)               #
                                                                                                     #
 set(CMAKE_CXX_STANDARD_REQUIRED ON)                                                                 #
 set(CMAKE_CXX_STANDARD 20)                                                                          #
 #####################################################################################################
 
 ### Plugin to generate meta tables for exported PQP information
-add_plugin(NAME WorkloadStatistics SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
+add_plugin(NAME WorkloadStatisticsPlugin SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
 
 ### Plugin to expose benchmark queries as a meta table and run TPC-C
-add_plugin(NAME WorkloadHandler SRCS workload_handler.cpp workload_handler.hpp DEPS hyriseServer)
+add_plugin(NAME WorkloadHandlerPlugin SRCS workload_handler.cpp workload_handler.hpp DEPS hyriseServer)
 
 ### Plugin to accept simple commands
-add_plugin(NAME SimpleExecutor SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
+add_plugin(NAME CommandExecutorPlugin SRCS command_executor.cpp command_executor.hpp DEPS hyriseServer)
+
+### Plugin to provide a data table with additional data characteristics
+add_plugin(NAME DataCharacteristicsPlugin SRCS data_characteristics.cpp data_characteristics.hpp DEPS hyriseServer)
+
+
+# Add a link to resources/ at the root of the build directory.
+add_custom_target(resourceBenchmarkDataLink
+    COMMAND rm -f ${CMAKE_BINARY_DIR}/resources  # remove link used for hyriseTest (see main CMakeLists)
+    COMMAND ln -fs ${CMAKE_BINARY_DIR}/../hyrise/resources ${CMAKE_BINARY_DIR}/
+    COMMAND ln -fs ${CMAKE_BINARY_DIR}/../hyrise/third_party ${CMAKE_BINARY_DIR}/
+)
+add_dependencies(WorkloadStatisticsPlugin resourceBenchmarkDataLink)

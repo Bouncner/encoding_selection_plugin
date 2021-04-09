@@ -25,9 +25,7 @@ EOF
 
 chmod +x TPCH_Q01.exp
 ./TPCH_Q01.exp
-ret_code=$?
-if [ $ret_code != 0 ]; then
-	exit $ret_code
-fi
+ret=$?
 
 kill -9 $server_pid
+exit $ret

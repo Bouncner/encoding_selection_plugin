@@ -542,22 +542,10 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
       const auto operator_predicate = OperatorJoinPredicate::from_expression(*(join_node->node_expressions[0]),
                                                                              *node->left_input(), *node->right_input());
 
-      
-      std::cout << "########\n########\n" << *node << "########\n########\n" << std::endl;
-
-
       const auto& perf_data = op->performance_data;
 
       if (operator_predicate.has_value()) {
-        std::cout << "FLIPPED?" << operator_predicate->is_flipped() << std::endl;
-
         const auto join_predicate_expression = std::dynamic_pointer_cast<const AbstractPredicateExpression>(join_node->node_expressions[0]);
-        // auto left_table_name = NULL_VALUE;
-        // auto right_table_name = NULL_VALUE;
-        // ColumnID left_original_column_id{};
-        // ColumnID right_original_column_id{};
-        // auto left_column_type = pmr_string{"DATA"};
-        // auto right_column_type = pmr_string{"DATA"};
 
         // The single source of truth for the workload parsing is the PQP. But in certain situations, the PQP lacks
         // relevant information. One example is obtaining the referenced table of a predicate. To access the table,
@@ -570,22 +558,18 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
           auto column_type = pmr_string{"DATA"};
 
           if (predicate_expression->type == ExpressionType::LQPColumn) {
-            std::cout << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ INTO" << std::endl;
             const auto column_expression = std::dynamic_pointer_cast<LQPColumnExpression>(predicate_expression);
             original_column_id = column_expression->original_column_id;
 
             const auto original_node = column_expression->original_node.lock();
             if (original_node->type == LQPNodeType::StoredTable) {
-              std::cout << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ INTO2" << std::endl;
               const auto stored_table_node = std::dynamic_pointer_cast<const StoredTableNode>(original_node);
               table_name = pmr_string{stored_table_node->table_name};
 
               column_type = pmr_string{"REFERENCE"};
               if (original_node != node_input) {
                 column_type = pmr_string{"REFERENCE"};
-                std::cout << "reference because \n 1 \n " << *original_node << " \n and 2 \n " << *node_input << "\n##################\n" << std::endl;
               } else {
-                std::cout << "data because \n 1 \n " << *original_node << " \n and 2 \n " << *node_input << "\n##################\n" << std::endl;
                 column_type = pmr_string{"DATA"};
               }
             }
@@ -811,17 +795,24 @@ PQPExportTablesPlugin::PQPExportTablesPlugin() {}
 std::string PQPExportTablesPlugin::description() const { return "This is the Hyrise PQPExportTablesPlugin"; }
 
 void PQPExportTablesPlugin::start() {
-  std::cout << "Started PQPExportTablesPlugin" << std::endl;
+  auto aggregate_table = std::make_shared<MetaPlanCacheAggregates>();
+  auto joins_table = std::make_shared<MetaPlanCacheJoins>();
+  auto projections_table = std::make_shared<MetaPlanCacheProjections>();
+  auto table_scan_table = std::make_shared<MetaPlanCacheTableScans>();
 
-  // auto projections_table = std::make_shared<MetaPlanCacheProjections>();
+  constexpr auto FIXED_PLAN_CACHE = false;
+  if (FIXED_PLAN_CACHE) {
+    const auto pqp_cache_snapshot = Hyrise::get().default_pqp_cache->snapshot();
+    aggregate_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    table_scan_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    joins_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    projections_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+  }
 
-  // const auto pqp_cache_snapshot = Hyrise::get().default_pqp_cache->snapshot();
-  // aggregate_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // table_scan_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // joins_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-  // projections_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-
-  // Hyrise::get().meta_table_manager.add_table(std::move(aggregate_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(aggregate_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(joins_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(projections_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(table_scan_table));
 }
 
 void PQPExportTablesPlugin::stop() {}
