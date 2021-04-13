@@ -11,6 +11,7 @@
 #include "hyrise.hpp"
 #include "operators/abstract_aggregate_operator.hpp"
 #include "operators/aggregate_hash.hpp"
+#include "operators/get_table.hpp"
 #include "operators/join_hash.hpp"
 #include "operators/operator_join_predicate.hpp"
 #include "operators/operator_scan_predicate.hpp"
@@ -40,15 +41,15 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
    *      - joins (no materialization, the opposite; usually a scambled pos list)
    */
   if (root_op != op) { // we have to be sure that we are not at the input node but have already traversed.
-    if (op->type() == OperatorType::Aggregate || op->type() == OperatorType::GetTable) {
+    if (op->type() == OperatorType::GetTable) {
       return 0.0;
     } else if (op->type() == OperatorType::Projection) {
+      std::cout << "Projetion is probably outdated ..." << std::endl;
       const auto lqp_node = op->lqp_node;
       const auto projection_node = std::dynamic_pointer_cast<const ProjectionNode>(lqp_node);
 
       for (const auto& node_expression : projection_node->node_expressions) {
         if (node_expression->type == ExpressionType::LQPColumn) {
-          std::cout << "Materialized because of: " << *node_expression << std::endl;
           return 0.0;
         }
       }
@@ -99,8 +100,8 @@ void process_pqp_op(const std::shared_ptr<const AbstractOperator>& op, const pmr
                  std::vector<std::pair<pmr_string, std::shared_ptr<const AbstractOperator>>>& gathered_operators) {
   if ((operator_type && op->type() == *operator_type) || 
        // If instances of a particular operator are requested, only collect those
-      (!operator_type && !MetaPlanCacheAggregates::detailed_operator_types.contains(op->type())
-        && !MetaPlanCacheAggregates::unsupported_operator_types.contains(op->type()))) {
+      (!operator_type && !MetaPlanCacheOperators::specialized_operator_types.contains(op->type())
+        && !MetaPlanCacheOperators::unsupported_operator_types.contains(op->type()))) {
        // If no operator to collect is given, we emit all others (this is done for the misc. table!; it's not for an
        // all-operators-table). Also skip if operator type is not supported.
     gathered_operators.push_back(std::make_pair(query_hex_hash, op));
@@ -790,6 +791,79 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
   return output_table;
 }
 
+MetaPlanCacheGetTables::MetaPlanCacheGetTables()
+    : AbstractMetaTable(TableColumnDefinitions{{"query_hash", DataType::String, false},
+                                               {"operator_hash", DataType::String, false},
+                                               {"table_name", DataType::String, false},
+                                               {"pruned_chunk_count", DataType::Long, false},
+                                               {"pruned_column_count", DataType::Long, false},
+                                               {"output_chunk_count", DataType::Long, false},
+                                               {"output_row_count", DataType::Long, false},
+                                               {"runtime_ns", DataType::Long, false},
+                                               {"description", DataType::String, false}}), MetaPlanCacheOperators() {}
+
+const std::string& MetaPlanCacheGetTables::name() const {
+  static const auto name = std::string{"plan_cache_get_tables"};
+  return name;
+}
+
+std::shared_ptr<Table> MetaPlanCacheGetTables::_on_generate() const {
+  auto output_table = std::make_shared<Table>(_column_definitions, TableType::Data, std::nullopt, UseMvcc::Yes);
+
+  const auto get_tables = get_operators_from_plan_cache(_plan_cache_snapshot ? *_plan_cache_snapshot : Hyrise::get().default_pqp_cache->snapshot(), OperatorType::GetTable);
+  for (const auto& [query_hex_hash, op] : get_tables) {
+    const auto get_table_op = dynamic_pointer_cast<const GetTable>(op);
+    Assert(get_table_op, "Processing GetTable operator but another operator was passed.");
+
+    std::stringstream op_hex_hash;
+    op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
+
+    const auto& operator_perf_data = op->performance_data;
+    output_table->append({query_hex_hash, pmr_string{op_hex_hash.str()}, pmr_string{get_table_op->table_name()},
+                          static_cast<int64_t>(get_table_op->pruned_chunk_ids().size()),
+                          static_cast<int64_t>(get_table_op->pruned_column_ids().size()),
+                          static_cast<int64_t>(operator_perf_data->output_chunk_count),
+                          static_cast<int64_t>(operator_perf_data->output_row_count),
+                          static_cast<int64_t>(operator_perf_data->walltime.count()), pmr_string{op->description()}});
+  }
+
+  return output_table;
+}
+
+MetaPlanCacheMiscOperators::MetaPlanCacheMiscOperators()
+    : AbstractMetaTable(TableColumnDefinitions{{"operator", DataType::String, false},
+                                               {"query_hash", DataType::String, false},
+                                               {"operator_hash", DataType::String, false},
+                                               {"output_chunk_count", DataType::Long, false},
+                                               {"output_row_count", DataType::Long, false},
+                                               {"runtime_ns", DataType::Long, false},
+                                               {"description", DataType::String, false}}), MetaPlanCacheOperators() {}
+
+const std::string& MetaPlanCacheMiscOperators::name() const {
+  static const auto name = std::string{"plan_cache_misc_operators"};
+  return name;
+}
+
+std::shared_ptr<Table> MetaPlanCacheMiscOperators::_on_generate() const {
+  auto output_table = std::make_shared<Table>(_column_definitions, TableType::Data, std::nullopt, UseMvcc::Yes);
+
+  const auto misc_operators = get_operators_from_plan_cache(_plan_cache_snapshot ? *_plan_cache_snapshot
+                                                            : Hyrise::get().default_pqp_cache->snapshot(),
+                                                            std::nullopt);
+  for (const auto& [query_hex_hash, op] : misc_operators) {
+    std::stringstream op_hex_hash;
+    op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
+
+    const auto& operator_perf_data = op->performance_data;
+    output_table->append({pmr_string{magic_enum::enum_name(op->type())}, query_hex_hash, pmr_string{op_hex_hash.str()},
+                          static_cast<int64_t>(operator_perf_data->output_chunk_count),
+                          static_cast<int64_t>(operator_perf_data->output_row_count),
+                          static_cast<int64_t>(operator_perf_data->walltime.count()), pmr_string{op->description()}});
+  }
+
+  return output_table;
+}
+
 PQPExportTablesPlugin::PQPExportTablesPlugin() {}
 
 std::string PQPExportTablesPlugin::description() const { return "This is the Hyrise PQPExportTablesPlugin"; }
@@ -798,21 +872,27 @@ void PQPExportTablesPlugin::start() {
   auto aggregate_table = std::make_shared<MetaPlanCacheAggregates>();
   auto joins_table = std::make_shared<MetaPlanCacheJoins>();
   auto projections_table = std::make_shared<MetaPlanCacheProjections>();
-  auto table_scan_table = std::make_shared<MetaPlanCacheTableScans>();
+  auto table_scans_table = std::make_shared<MetaPlanCacheTableScans>();
+  auto get_tables_table = std::make_shared<MetaPlanCacheGetTables>();
+  auto misc_operators_table = std::make_shared<MetaPlanCacheMiscOperators>();
 
   constexpr auto FIXED_PLAN_CACHE = false;
   if (FIXED_PLAN_CACHE) {
     const auto pqp_cache_snapshot = Hyrise::get().default_pqp_cache->snapshot();
     aggregate_table->set_plan_cache_snapshot(pqp_cache_snapshot);
-    table_scan_table->set_plan_cache_snapshot(pqp_cache_snapshot);
     joins_table->set_plan_cache_snapshot(pqp_cache_snapshot);
     projections_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    table_scans_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    get_tables_table->set_plan_cache_snapshot(pqp_cache_snapshot);
+    misc_operators_table->set_plan_cache_snapshot(pqp_cache_snapshot);
   }
 
   Hyrise::get().meta_table_manager.add_table(std::move(aggregate_table));
   Hyrise::get().meta_table_manager.add_table(std::move(joins_table));
   Hyrise::get().meta_table_manager.add_table(std::move(projections_table));
-  Hyrise::get().meta_table_manager.add_table(std::move(table_scan_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(table_scans_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(get_tables_table));
+  Hyrise::get().meta_table_manager.add_table(std::move(misc_operators_table));
 }
 
 void PQPExportTablesPlugin::stop() {}

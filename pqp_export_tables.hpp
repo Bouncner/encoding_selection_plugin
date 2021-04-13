@@ -13,7 +13,7 @@ class MetaPlanCacheOperators {
   using PlanCacheSnapshotEnty = typename AbstractCache<std::string, std::shared_ptr<AbstractOperator>>::SnapshotEntry;
   using PlanCache = typename std::unordered_map<std::string, PlanCacheSnapshotEnty>;
 
-  inline static const std::set<OperatorType> detailed_operator_types = {OperatorType::TableScan, OperatorType::Aggregate,
+  inline static const std::unordered_set<OperatorType> specialized_operator_types = {OperatorType::TableScan, OperatorType::Aggregate,
   														  OperatorType::Projection, OperatorType::JoinHash,
   														  OperatorType::JoinNestedLoop, OperatorType::JoinSortMerge,
   														  OperatorType::GetTable};
@@ -68,6 +68,24 @@ class MetaPlanCacheProjections : public AbstractMetaTable, public MetaPlanCacheO
   const std::string& name() const final;
 
   static TableColumnDefinitions get_table_column_definitions();
+
+ protected:
+  std::shared_ptr<Table> _on_generate() const final;
+};
+
+class MetaPlanCacheGetTables : public AbstractMetaTable, public MetaPlanCacheOperators {
+ public:
+  MetaPlanCacheGetTables();
+  const std::string& name() const final;
+
+ protected:
+  std::shared_ptr<Table> _on_generate() const final;
+};
+
+class MetaPlanCacheMiscOperators : public AbstractMetaTable, public MetaPlanCacheOperators {
+ public:
+  MetaPlanCacheMiscOperators();
+  const std::string& name() const final;
 
  protected:
   std::shared_ptr<Table> _on_generate() const final;
