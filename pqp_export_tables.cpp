@@ -23,6 +23,8 @@ namespace {
 
 using namespace opossum;  // NOLINT
 
+const auto shuffledness_column = TableColumnDefinition{"input_shuffledness", DataType::Double, false};
+
 /**
  *  Estimate how "shuffled" the pos list is. Per definition, a physical table has a shuffledness of 0.0.
  *  A join in contrast might return a pos list that is completely shuffled (i.e. 1.0).
@@ -41,8 +43,11 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
    *      - joins (no materialization, the opposite; usually a scambled pos list)
    */
   if (root_op != op) { // we have to be sure that we are not at the input node but have already traversed.
-    if (op->type() == OperatorType::GetTable) {
+    if (op->type() == OperatorType::GetTable || op->type() == OperatorType::UnionAll) {
       return 0.0;
+    } else if (op->type() == OperatorType::UnionPositions || op->type() == OperatorType::JoinSortMerge) {
+      // Joins and UnionPositions all pretty much shuffle the whole input. 
+      return 1.0;
     } else if (op->type() == OperatorType::Projection) {
       std::cout << "Projetion is probably outdated ..." << std::endl;
       const auto lqp_node = op->lqp_node;
@@ -77,12 +82,9 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
   if (right_input && !visited_pqp_nodes.contains(right_input)) {
     const auto right_value = estimate_pos_list_shuffledness(root_op, right_input, column_id, visited_pqp_nodes);
     Assert(op->type() == OperatorType::JoinHash ||
-           op->type() == OperatorType::JoinSortMerge ||
            op->type() == OperatorType::JoinNestedLoop ||
-           op->type() == OperatorType::JoinIndex ||
-           op->type() == OperatorType::UnionPositions ||
-           op->type() == OperatorType::UnionAll,
-           "unexpted type of " + std::string{magic_enum::enum_name(op->type())});
+           op->type() == OperatorType::JoinIndex,
+           "Unexpted operators type of " + std::string{magic_enum::enum_name(op->type())});
     return (left_value + right_value) / 2;
   }
 
@@ -222,6 +224,7 @@ TableColumnDefinitions MetaPlanCacheAggregates::get_table_column_definitions() {
                                             {"column_type", DataType::String, false},
                                             {"table_name", DataType::String, true},
                                             {"column_name", DataType::String, true},
+                                            shuffledness_column,
                                             {"group_by_column_count", DataType::Int, false},
                                             {"aggregate_column_count", DataType::Int, false},
                                             {"is_group_by_column", DataType::Int, false},
@@ -331,7 +334,8 @@ std::shared_ptr<Table> MetaPlanCacheAggregates::_on_generate() const {
       left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
       auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
         pmr_string{op_hex_hash.str()}, pmr_string{left_input_hex_hash.str()},
-        column_type, table_name, column_name, static_cast<int32_t>(group_by_column_count),
+        column_type, table_name, column_name, estimate_pos_list_shuffledness(op, ColumnID{0}),
+        static_cast<int32_t>(group_by_column_count),
         static_cast<int32_t>(node_expression_count - group_by_column_count),
         static_cast<int32_t>(is_group_by_column), is_count_star, is_distinct_aggregate, is_any_aggregate,
         static_cast<int64_t>(op->left_input()->performance_data->output_chunk_count),
@@ -368,7 +372,7 @@ MetaPlanCacheTableScans::MetaPlanCacheTableScans()
                                                {"column_type", DataType::String, false},
                                                {"table_name", DataType::String, true},
                                                {"column_name", DataType::String, true},
-                                               {"input_shuffledness", DataType::Double, false},
+                                               shuffledness_column,
                                                {"predicate_condition", DataType::String, true},
                                                {"pruned_chunk_count", DataType::Long, false},
                                                {"all_rows_matched_count", DataType::Long, false},
@@ -465,9 +469,15 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
         }
       }
 
+      auto column_id = ColumnID{0};
+      std::cout << *predicate->arguments[0] << std::endl;
+      try {
+        column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
+      } catch (...) {}
+
       output_table->append({query_hex_hash, pmr_string{op_hex_hash.str()}, pmr_string{left_input_hex_hash.str()},
                             column_type, table_name, column_name,
-                            estimate_pos_list_shuffledness(op, ColumnID{17}),
+                            estimate_pos_list_shuffledness(op, column_id),
                             scan_predicate_condition,
                             static_cast<int64_t>(operator_perf_data.num_chunks_with_early_out),
                             static_cast<int64_t>(operator_perf_data.num_chunks_with_all_rows_matching),
@@ -503,11 +513,13 @@ TableColumnDefinitions MetaPlanCacheJoins::get_table_column_definitions() {
                                             {"join_mode", DataType::String, false},
                                             {"left_table_name", DataType::String, true},
                                             {"left_column_name", DataType::String, true},
+                                            {"left_input_shuffledness", DataType::Double, false},
                                             {"left_table_row_count", DataType::Long, false},
                                             {"left_table_chunk_count", DataType::Long, false},
                                             {"left_column_type", DataType::String, false},
                                             {"right_table_name", DataType::String, true},
                                             {"right_column_name", DataType::String, true},
+                                            {"right_input_shuffledness", DataType::Double, false},
                                             {"right_table_row_count", DataType::Long, false},
                                             {"right_table_chunk_count", DataType::Long, false},
                                             {"right_column_type", DataType::String, false},
@@ -620,10 +632,12 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
           pmr_string{join_mode_to_string.left.at(join_node->join_mode)},
           left_table_name,
           left_column_name,
+          estimate_pos_list_shuffledness(op, ColumnID{0}),
           left_table_row_count,
           left_table_chunk_count,
           left_column_type,
-          right_table_name, right_column_name, right_table_row_count, right_table_chunk_count, right_column_type,
+          right_table_name, right_column_name, estimate_pos_list_shuffledness(op, ColumnID{0}),
+          right_table_row_count, right_table_chunk_count, right_column_type,
           static_cast<int32_t>(join_node->node_expressions.size()),
           pmr_string{predicate_condition_to_string.left.at((*operator_predicate).predicate_condition)},
           static_cast<int64_t>(perf_data->output_chunk_count),
@@ -680,6 +694,7 @@ TableColumnDefinitions MetaPlanCacheProjections::get_table_column_definitions() 
                                             {"column_type", DataType::String, false},
                                             {"table_name", DataType::String, true},
                                             {"column_name", DataType::String, true},
+                                            shuffledness_column,
                                             {"requires_computation", DataType::Int, false},
                                             {"input_chunk_count", DataType::Long, false},
                                             {"input_row_count", DataType::Long, false},
@@ -720,11 +735,12 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
     const auto description = pmr_string{op->lqp_node->description()};
 
     const auto add_remaining_fields_and_add_to_table = [&, op=op](auto& values, const auto expression) {
-      values.insert(values.end(), {static_cast<int32_t>(expression->requires_computation()),
-                                                       static_cast<int64_t>(left_input_perf_data->output_chunk_count),
-                                                       static_cast<int64_t>(left_input_perf_data->output_row_count),
-                                                       static_cast<int64_t>(perf_data->output_chunk_count),
-                                                       static_cast<int64_t>(perf_data->output_row_count)});
+      values.insert(values.end(), {estimate_pos_list_shuffledness(op, ColumnID{0}),
+                                   static_cast<int32_t>(expression->requires_computation()),
+                                   static_cast<int64_t>(left_input_perf_data->output_chunk_count),
+                                   static_cast<int64_t>(left_input_perf_data->output_row_count),
+                                   static_cast<int64_t>(perf_data->output_chunk_count),
+                                   static_cast<int64_t>(perf_data->output_row_count)});
 
       const auto& operator_perf_data = dynamic_cast<const OperatorPerformanceData<Projection::OperatorSteps>&>(*op->performance_data);
       for (const auto step_name : magic_enum::enum_values<Projection::OperatorSteps>()) {

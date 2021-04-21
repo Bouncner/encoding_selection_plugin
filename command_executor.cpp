@@ -46,9 +46,11 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 	nlohmann::json config;
 	config_stream >> config;
 
+	Assert(config.contains("configuration"), "Configuration dictionary missing in compression configuration JSON.");
+
 	auto encoded_segment_count = std::atomic_int{0};
 	auto& storage_manager = Hyrise::get().storage_manager;
-	for (const auto& [table_name, chunk_configs] : config.items()) {
+	for (const auto& [table_name, chunk_configs] : config["configuration"].items()) {
 		const auto& table = storage_manager.get_table(table_name);
 		const auto& chunk_count = table->chunk_count();
 		const auto& column_count = table->column_count();
@@ -73,9 +75,6 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 
 			chunk_encoding_functors.push_back([&, chunk_id, encoding_specs] {
 				const auto& chunk = table->get_chunk(ChunkID{chunk_id});
-				std::stringstream ss;
-				ss << "l(" << column_count << ")" << data_types.size() << "-" << encoding_specs.size() << "\n";
-				std::cout << ss.str() << std::endl;
 				ChunkEncoder::encode_chunk(chunk, data_types, encoding_specs);
 				encoded_segment_count += encoding_specs.size();
 			});
