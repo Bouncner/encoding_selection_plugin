@@ -530,10 +530,10 @@ TableColumnDefinitions MetaPlanCacheJoins::get_table_column_definitions() {
                                             {"output_row_count", DataType::Long, false},
                                             {"is_flipped", DataType::Int, false},
                                             {"radix_bits", DataType::Int, true},
-                                            {"build_side_materialized_value_count", DataType::Long, false},
-                                            {"probe_side_materialized_value_count", DataType::Long, false},
-                                            {"hash_tables_distinct_value_count", DataType::Long, false},
-                                            {"hash_tables_position_count", DataType::Long, false}};
+                                            {"build_side_materialized_value_count", DataType::Long, true},
+                                            {"probe_side_materialized_value_count", DataType::Long, true},
+                                            {"hash_tables_distinct_value_count", DataType::Long, true},
+                                            {"hash_tables_position_count", DataType::Long, true}};
 
   for (const auto step_name : magic_enum::enum_values<JoinHash::OperatorSteps>()) {
     const auto step_column_name = camel_to_csv_row_title(std::string{magic_enum::enum_name(step_name)}) + "_ns";
@@ -664,6 +664,10 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
         } else {
           values_to_append.push_back(0);  // is flipped
           values_to_append.push_back(NULL_VALUE);  // radix bits
+          values_to_append.push_back(NULL_VALUE);  // build_side_materialized_value_count
+          values_to_append.push_back(NULL_VALUE);  // probe_side_materialized_value_count
+          values_to_append.push_back(NULL_VALUE);  // hash_tables_distinct_value_count
+          values_to_append.push_back(NULL_VALUE);  // hash_tables_position_count
           for (auto step_id = size_t{0}; step_id < magic_enum::enum_count<JoinHash::OperatorSteps>(); ++step_id) {
             values_to_append.push_back(NULL_VALUE);
           }
