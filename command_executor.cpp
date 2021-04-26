@@ -127,6 +127,8 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   const auto command = Hyrise::get().settings_manager.get_setting("Plugin::Executor::Command")->get();
   if (command == "DROP PQP PLANCACHE") {
   	Hyrise::get().default_pqp_cache->clear();
+  } else if (command == "DROP LQP PLANCACHE") {
+  	Hyrise::get().default_lqp_cache->clear();
   } else if (command.starts_with("SET SERVER CORES ")) {
   	const auto last_space_pos = command.find_last_of(' ');
   	const auto core_count = std::stoul(command.substr(last_space_pos + 1));

@@ -84,7 +84,8 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
     Assert(op->type() == OperatorType::JoinHash ||
            op->type() == OperatorType::JoinNestedLoop ||
            op->type() == OperatorType::JoinIndex,
-           "Unexpted operators type of " + std::string{magic_enum::enum_name(op->type())});
+           op->type() == OperatorType::JoinSortMerge,
+           "Unexpted operator type of " + std::string{magic_enum::enum_name(op->type())});
     return (left_value + right_value) / 2;
   }
 
@@ -528,7 +529,11 @@ TableColumnDefinitions MetaPlanCacheJoins::get_table_column_definitions() {
                                             {"output_chunk_count", DataType::Long, false},
                                             {"output_row_count", DataType::Long, false},
                                             {"is_flipped", DataType::Int, false},
-                                            {"radix_bits", DataType::Int, true}};
+                                            {"radix_bits", DataType::Int, true},
+                                            {"build_side_materialized_value_count", DataType::Long, false},
+                                            {"probe_side_materialized_value_count", DataType::Long, false},
+                                            {"hash_tables_distinct_value_count", DataType::Long, false},
+                                            {"hash_tables_position_count", DataType::Long, false}};
 
   for (const auto step_name : magic_enum::enum_values<JoinHash::OperatorSteps>()) {
     const auto step_column_name = camel_to_csv_row_title(std::string{magic_enum::enum_name(step_name)}) + "_ns";
@@ -647,6 +652,12 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
           const auto& operator_perf_data = dynamic_cast<const JoinHash::PerformanceData&>(*join_hash_op->performance_data);
           values_to_append.push_back(static_cast<int32_t>(!operator_perf_data.left_input_is_build_side));
           values_to_append.push_back(static_cast<int32_t>(operator_perf_data.radix_bits));
+          values_to_append.push_back(static_cast<int64_t>(operator_perf_data.build_side_materialized_value_count));
+          values_to_append.push_back(static_cast<int64_t>(operator_perf_data.probe_side_materialized_value_count));
+          values_to_append.push_back(static_cast<int64_t>(operator_perf_data.hash_tables_distinct_value_count));
+          const auto hash_tables_position_count = operator_perf_data.hash_tables_position_count
+                                                  ? *operator_perf_data.hash_tables_position_count : 0;
+          values_to_append.push_back(static_cast<int64_t>(hash_tables_position_count));
           for (const auto step_name : magic_enum::enum_values<JoinHash::OperatorSteps>()) {
             values_to_append.push_back(static_cast<int64_t>(operator_perf_data.get_step_runtime(step_name).count()));
           }
