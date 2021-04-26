@@ -83,9 +83,9 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
     const auto right_value = estimate_pos_list_shuffledness(root_op, right_input, column_id, visited_pqp_nodes);
     Assert(op->type() == OperatorType::JoinHash ||
            op->type() == OperatorType::JoinNestedLoop ||
-           op->type() == OperatorType::JoinIndex,
+           op->type() == OperatorType::JoinIndex ||
            op->type() == OperatorType::JoinSortMerge,
-           "Unexpted operator type of " + std::string{magic_enum::enum_name(op->type())});
+           "Unexpected operator type of " + std::string{magic_enum::enum_name(op->type())});
     return (left_value + right_value) / 2;
   }
 
