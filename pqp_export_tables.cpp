@@ -27,7 +27,7 @@ using namespace opossum;  // NOLINT
 
 const auto shuffledness_column = TableColumnDefinition{"input_shuffledness", DataType::Double, false};
 
-pmr_string operator_hash(const auto& operator) {
+pmr_string operator_hash(const std::shared_ptr<const AbstractOperator>& op) {
   auto seed = size_t{0};
 
   boost::hash_combine(seed, op);
