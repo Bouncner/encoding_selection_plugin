@@ -1,5 +1,7 @@
 #include "pqp_export_tables.hpp"
 
+#include <boost/functional/hash.hpp>
+
 #include "expression/abstract_predicate_expression.hpp"
 #include "expression/expression_utils.hpp"
 #include "expression/lqp_column_expression.hpp"
@@ -24,6 +26,18 @@ namespace {
 using namespace opossum;  // NOLINT
 
 const auto shuffledness_column = TableColumnDefinition{"input_shuffledness", DataType::Double, false};
+
+pmr_string operator_hash(const auto& operator) {
+  auto seed = size_t{0};
+
+  boost::hash_combine(seed, op);
+  boost::hash_combine(seed, op->description());
+
+  std::stringstream pseudo_hash;
+  pseudo_hash << std::hex << seed;
+
+  return pmr_string{pseudo_hash.str()};
+}
 
 /**
  *  Estimate how "shuffled" the pos list is. Per definition, a physical table has a shuffledness of 0.0.
@@ -334,7 +348,7 @@ std::shared_ptr<Table> MetaPlanCacheAggregates::_on_generate() const {
       std::stringstream left_input_hex_hash;
       left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
       auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-        pmr_string{op_hex_hash.str()}, pmr_string{left_input_hex_hash.str()},
+        operator_hash(op), pmr_string{left_input_hex_hash.str()},
         column_type, table_name, column_name, estimate_pos_list_shuffledness(op, ColumnID{0}),
         static_cast<int32_t>(group_by_column_count),
         static_cast<int32_t>(node_expression_count - group_by_column_count),
