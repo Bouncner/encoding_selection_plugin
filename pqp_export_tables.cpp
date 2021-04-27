@@ -343,12 +343,8 @@ std::shared_ptr<Table> MetaPlanCacheAggregates::_on_generate() const {
         }
       }
 
-      std::stringstream op_hex_hash;
-      op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-      std::stringstream left_input_hex_hash;
-      left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
       auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-        operator_hash(op), pmr_string{left_input_hex_hash.str()},
+        operator_hash(op), operator_hash(op->left_input()),
         column_type, table_name, column_name, estimate_pos_list_shuffledness(op, ColumnID{0}),
         static_cast<int32_t>(group_by_column_count),
         static_cast<int32_t>(node_expression_count - group_by_column_count),
@@ -438,11 +434,6 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
       AllTypeVariant scan_predicate_condition = NULL_VALUE;
       auto column_type = pmr_string{"DATA"};
 
-      std::stringstream op_hex_hash;
-      op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-      std::stringstream left_input_hex_hash;
-      left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
-
       const auto table_scan_op = dynamic_pointer_cast<const TableScan>(op);
       Assert(table_scan_op, "Unexpected non-table-scan operators");
 
@@ -490,7 +481,7 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
         column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
       } catch (...) {}
 
-      output_table->append({query_hex_hash, pmr_string{op_hex_hash.str()}, pmr_string{left_input_hex_hash.str()},
+      output_table->append({query_hex_hash, operator_hash(op), operator_hash(op->left_input()),
                             column_type, table_name, column_name,
                             estimate_pos_list_shuffledness(op, column_id),
                             scan_predicate_condition,
@@ -640,14 +631,8 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
         int64_t right_table_row_count = right_input_perf_data->output_row_count;
         int64_t right_table_chunk_count = right_input_perf_data->output_chunk_count;
 
-        std::stringstream op_hex_hash;
-        op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-        std::stringstream left_input_hex_hash;
-        left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
-        std::stringstream right_input_hex_hash;
-        right_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->right_input());
         auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-          pmr_string{op_hex_hash.str()}, pmr_string{left_input_hex_hash.str()}, pmr_string{right_input_hex_hash.str()},
+          operator_hash(op), operator_hash(op->left_input()), operator_hash(op->right_input()),
           pmr_string{join_mode_to_string.left.at(join_node->join_mode)},
           left_table_name,
           left_column_name,
@@ -748,11 +733,6 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
   const auto projections = get_operators_from_plan_cache(plan_cache_snapshot, OperatorType::Projection);
 
   for (const auto& [query_hex_hash, op] : projections) {
-    std::stringstream op_hex_hash;
-    op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-    std::stringstream left_input_hex_hash;
-    left_input_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op->left_input());
-
     const auto input_is_materialized = operator_result_is_probably_materialized(op->left_input());
 
     const auto node = op->lqp_node;
@@ -783,13 +763,13 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
 
     for (const auto& el : projection_node->node_expressions) {
       auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-                                                          pmr_string{op_hex_hash.str()},
-                                                          pmr_string{left_input_hex_hash.str()}};
+                                                          operator_hash(op),
+                                                          operator_hash(op->left_input())};
 
       if (input_is_materialized) {
         auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-                                                            pmr_string{op_hex_hash.str()},
-                                                            pmr_string{left_input_hex_hash.str()},
+                                                            operator_hash(op),
+                                                            operator_hash(op->left_input()),
                                                             pmr_string{"DATA"},
                                                             NULL_VALUE,
                                                             NULL_VALUE};
@@ -797,7 +777,7 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
       } else {
         // In case we have a more "complex" expression (e.g., l_price * 1.19f), we need to traverse the expressions
         // in order to find any potential column references.
-        visit_expression(el, [&, query_hex_hash=query_hex_hash](const auto& expression) {
+        visit_expression(el, [&, query_hex_hash=query_hex_hash, op=op](const auto& expression) {
           if (expression->type == ExpressionType::LQPColumn) {
             const auto column_expression = std::dynamic_pointer_cast<LQPColumnExpression>(expression);
             const auto original_node = column_expression->original_node.lock();
@@ -818,8 +798,8 @@ std::shared_ptr<Table> MetaPlanCacheProjections::_on_generate() const {
               }
 
               auto values_to_append = std::vector<AllTypeVariant>{query_hex_hash,
-                                                                  pmr_string{op_hex_hash.str()},
-                                                                  pmr_string{left_input_hex_hash.str()},
+                                                                  operator_hash(op),
+                                                                  operator_hash(op->left_input()),
                                                                   column_type,
                                                                   pmr_string{table_name},
                                                                   column_name};
@@ -860,11 +840,8 @@ std::shared_ptr<Table> MetaPlanCacheGetTables::_on_generate() const {
     const auto get_table_op = dynamic_pointer_cast<const GetTable>(op);
     Assert(get_table_op, "Processing GetTable operator but another operator was passed.");
 
-    std::stringstream op_hex_hash;
-    op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-
     const auto& operator_perf_data = op->performance_data;
-    output_table->append({query_hex_hash, pmr_string{op_hex_hash.str()}, pmr_string{get_table_op->table_name()},
+    output_table->append({query_hex_hash, operator_hash(op), pmr_string{get_table_op->table_name()},
                           static_cast<int64_t>(get_table_op->pruned_chunk_ids().size()),
                           static_cast<int64_t>(get_table_op->pruned_column_ids().size()),
                           static_cast<int64_t>(operator_perf_data->output_chunk_count),
@@ -896,11 +873,8 @@ std::shared_ptr<Table> MetaPlanCacheMiscOperators::_on_generate() const {
                                                             : Hyrise::get().default_pqp_cache->snapshot(),
                                                             std::nullopt);
   for (const auto& [query_hex_hash, op] : misc_operators) {
-    std::stringstream op_hex_hash;
-    op_hex_hash << std::hex << std::hash<std::shared_ptr<const AbstractOperator>>{}(op);
-
     const auto& operator_perf_data = op->performance_data;
-    output_table->append({pmr_string{magic_enum::enum_name(op->type())}, query_hex_hash, pmr_string{op_hex_hash.str()},
+    output_table->append({pmr_string{magic_enum::enum_name(op->type())}, query_hex_hash, operator_hash(op),
                           static_cast<int64_t>(operator_perf_data->output_chunk_count),
                           static_cast<int64_t>(operator_perf_data->output_row_count),
                           static_cast<int64_t>(operator_perf_data->walltime.count()), pmr_string{op->description()}});
