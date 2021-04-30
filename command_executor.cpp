@@ -27,7 +27,7 @@ enum class CompressionApplicationMode { Sequential, Scheduler, OSThreads };
 void apply_compression_configuration(const std::string& json_configuration_path, CompressionApplicationMode mode,
 																		 size_t os_thread_count = 0ul) {
   Assert(std::filesystem::is_regular_file(json_configuration_path), "No such file: " + json_configuration_path);
-  Assert(mode == CompressionApplicationMode::OSThreads, "As of now, only OS threading mode is implemented.");
+  Assert(mode != CompressionApplicationMode::Sequential, "Sequnential compression  mode is not implemented.");
   
   std::stringstream ss;
   ss << "Starting to apply compression configuration " + json_configuration_path
@@ -51,6 +51,8 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 	auto encoded_segment_count = std::atomic_int{0};
 	auto& storage_manager = Hyrise::get().storage_manager;
 	for (const auto& [table_name, chunk_configs] : config["configuration"].items()) {
+	  auto active_jobs = std::atomic_int{0};
+
 		const auto& table = storage_manager.get_table(table_name);
 		const auto& chunk_count = table->chunk_count();
 		const auto& column_count = table->column_count();
@@ -77,6 +79,7 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 				const auto& chunk = table->get_chunk(ChunkID{chunk_id});
 				ChunkEncoder::encode_chunk(chunk, data_types, encoding_specs);
 				encoded_segment_count += encoding_specs.size();
+        --active_jobs;
 			});
 		}
 
@@ -85,23 +88,29 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 		auto rng = std::default_random_engine{};
 		std::shuffle(std::begin(chunk_encoding_functors), std::end(chunk_encoding_functors), rng);
 
-		auto next_task = std::atomic_uint{0};
-	  const auto thread_count = std::min(static_cast<size_t>(chunk_count), os_thread_count);
-	  auto threads = std::vector<std::thread>{};
-	  threads.reserve(thread_count);
+    if (mode == CompressionApplicationMode::OSThreads) {
+      const auto thread_count = std::min(static_cast<size_t>(chunk_count), os_thread_count);
+      auto threads = std::vector<std::thread>{};
+      threads.reserve(thread_count);
 
-		for (auto thread_id = 0u; thread_id < thread_count; ++thread_id) {
-	    threads.emplace_back([&] {
-	      while (true) {
-	        const auto my_task_id = next_task++;
-	        if (my_task_id >= chunk_encoding_functors.size()) return;
+      for (auto thread_id = 0u; thread_id < thread_count; ++thread_id) {
+        threads.emplace_back([&] {
+          while (true) {
+            const auto my_task_id = next_task++;
+            if (my_task_id >= chunk_encoding_functors.size()) return;
 
-	        chunk_encoding_functors[my_task_id]();
-	      }
-	    });
-	  }
+            chunk_encoding_functors[my_task_id]();
+          }
+        });
+      }
 
-	  for (auto& thread : threads) thread.join();
+	    for (auto& thread : threads) thread.join();
+    } else if (mode == CompressionApplicationMode::Scheduler) {
+      for (const auto& functor : chunk_encoding_functors) {
+        while (true) {
+        }
+      }
+    }
 	}
 	Assert(segment_count == static_cast<int64_t>(encoded_segment_count), "JSON did probably not include encoding specifications for all segments (of "
 																								 "" + std::to_string(segment_count) + " segments, only "
