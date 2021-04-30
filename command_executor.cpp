@@ -25,15 +25,15 @@ using namespace opossum;  // NOLINT
 enum class CompressionApplicationMode { Sequential, Scheduler, OSThreads };
 
 void apply_compression_configuration(const std::string& json_configuration_path, CompressionApplicationMode mode,
-																		 size_t os_thread_count = 0ul) {
+																		 size_t task_count = 0ul) {
   Assert(std::filesystem::is_regular_file(json_configuration_path), "No such file: " + json_configuration_path);
   Assert(mode != CompressionApplicationMode::Sequential, "Sequnential compression  mode is not implemented.");
   
   std::stringstream ss;
   ss << "Starting to apply compression configuration " + json_configuration_path
   	 << " (mode: " << magic_enum::enum_name(mode);
-  if (os_thread_count != 0) {
-  	ss << ", OS thread count: " << os_thread_count;
+  if (task_count != 0) {
+  	ss << ", task count: " << task_count;
   }
   ss << ").";
   Hyrise::get().log_manager.add_message("CommandExecutorPlugin", ss.str(), LogLevel::Info);
@@ -89,7 +89,8 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 		std::shuffle(std::begin(chunk_encoding_functors), std::end(chunk_encoding_functors), rng);
 
     if (mode == CompressionApplicationMode::OSThreads) {
-      const auto thread_count = std::min(static_cast<size_t>(chunk_count), os_thread_count);
+      auto next_task = std::atomic_uint{0};
+      const auto thread_count = std::min(static_cast<size_t>(chunk_count), task_count);
       auto threads = std::vector<std::thread>{};
       threads.reserve(thread_count);
 
@@ -108,6 +109,14 @@ void apply_compression_configuration(const std::string& json_configuration_path,
     } else if (mode == CompressionApplicationMode::Scheduler) {
       for (const auto& functor : chunk_encoding_functors) {
         while (true) {
+          if (active_jobs < static_cast<int>(task_count)) {
+            auto job_task = std::make_shared<JobTask>([&]() {
+              functor();
+            });
+            Hyrise::get().scheduler()->schedule(job_task);
+            break;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
       }
     }
