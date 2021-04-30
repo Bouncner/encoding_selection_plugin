@@ -63,7 +63,6 @@ double estimate_pos_list_shuffledness(const std::shared_ptr<const AbstractOperat
       // Joins and UnionPositions all pretty much shuffle the whole input. 
       return 1.0;
     } else if (op->type() == OperatorType::Projection) {
-      std::cout << "Projetion is probably outdated ..." << std::endl;
       const auto lqp_node = op->lqp_node;
       const auto projection_node = std::dynamic_pointer_cast<const ProjectionNode>(lqp_node);
 
@@ -476,7 +475,6 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
       }
 
       auto column_id = ColumnID{0};
-      std::cout << *predicate->arguments[0] << std::endl;
       try {
         column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
       } catch (...) {}
@@ -589,8 +587,10 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
               const auto stored_table_node = std::dynamic_pointer_cast<const StoredTableNode>(original_node);
               table_name = pmr_string{stored_table_node->table_name};
 
-              column_type = pmr_string{"REFERENCE"};
-              if (original_node != node_input) {
+              if (original_node != node_input && node_input->type != LQPNodeType::StoredTable
+                  && node_input->type != LQPNodeType::StaticTable) {
+                // It's a reference table if the originally referenced not is not the input AND the input is not a table node.
+                // The reason to check for the table nodes is that a pruned GetTable is a new node.
                 column_type = pmr_string{"REFERENCE"};
               } else {
                 column_type = pmr_string{"DATA"};
