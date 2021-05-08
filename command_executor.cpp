@@ -88,8 +88,8 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 		auto rng = std::default_random_engine{};
 		std::shuffle(std::begin(chunk_encoding_functors), std::end(chunk_encoding_functors), rng);
 
+    auto next_task = std::atomic_uint{0};
     if (mode == CompressionApplicationMode::OSThreads) {
-      auto next_task = std::atomic_uint{0};
       const auto thread_count = std::min(static_cast<size_t>(chunk_count), task_count);
       auto threads = std::vector<std::thread>{};
       threads.reserve(thread_count);
@@ -107,18 +107,19 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 
 	    for (auto& thread : threads) thread.join();
     } else if (mode == CompressionApplicationMode::Scheduler) {
-      for (const auto& functor : chunk_encoding_functors) {
-        while (true) {
-          if (active_jobs < static_cast<int>(task_count)) {
-            auto job_task = std::make_shared<JobTask>([&]() {
-              functor();
-            });
-            Hyrise::get().scheduler()->schedule(job_task);
-            break;
+      auto jobs = std::vector<std::shared_ptr<AbstractTask>>{};
+      const auto job_count = std::min(static_cast<size_t>(chunk_count), task_count);
+      for (auto job_id = 0u; job_id < job_count; ++job_id) {
+        jobs.emplace_back(std::make_shared<JobTask>([&] {
+          while (true) {
+            const auto my_task_id = next_task++;
+            if (my_task_id >= chunk_encoding_functors.size()) return;
+
+            chunk_encoding_functors[my_task_id]();
           }
-          std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }
+        }));
       }
+      Hyrise::get().scheduler()->schedule_and_wait_for_tasks(jobs);
     }
 	}
 	Assert(segment_count == static_cast<int64_t>(encoded_segment_count), "JSON did probably not include encoding specifications for all segments (of "
@@ -182,7 +183,6 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   	}
 
   	if (apply_compression_config.size() == 6) {
-  	  Assert(apply_compression_config[4] == "OSThreads", "OS thread count parameter only valid for mode 'OSThreads'.");
   	  const auto thread_count = apply_compression_config[5] == "0" ?
   	  							std::thread::hardware_concurrency() : std::stoul(apply_compression_config[5]);
 		  apply_compression_configuration(file_path_str, *mode, thread_count);
