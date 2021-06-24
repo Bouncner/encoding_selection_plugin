@@ -380,8 +380,10 @@ MetaPlanCacheTableScans::MetaPlanCacheTableScans()
                                                {"operator_hash", DataType::String, false},
                                                {"left_input_operator_hash", DataType::String, false},
                                                {"column_type", DataType::String, false},
-                                               {"table_name", DataType::String, true},
-                                               {"column_name", DataType::String, true},
+                                               {"left_table_name", DataType::String, true},
+                                               {"left_column_name", DataType::String, true},
+                                               {"right_table_name", DataType::String, true},
+                                               {"right_column_name", DataType::String, true},
                                                shuffledness_column,
                                                {"predicate_condition", DataType::String, true},
                                                {"pruned_chunk_count", DataType::Long, false},
@@ -420,23 +422,25 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
     Assert(predicate_lqp_column_count < 3, "Unexpected case of table scan with three LQPColumns.");
 
     // We have several cases to handle here. A table scan usually contains a single LQPColumn and this is the one we
-    // are interested in. So we output that. But there are several special cases. First, column vs column scans. In
-    // this case, we'll output both columns and expect the export user to somehow handle it. The scan operation to
-    // which both columns belong can be recognized by the operator hash. Second, table scans on temporary columns
-    // (e.g., after a projection or comparing against an (uncorrelated) LQPSubquery result). In this case, we don't
-    // search for LQPColumns but still output a scan, so that we are able to predict the runtime of this scan.
+    // are interested the most in. But there are several special cases. First, column vs column scans. Second, table
+    // scans on temporary columns (e.g., after a projection or comparing against an (uncorrelated) LQPSubquery result).
+    // In this case, we don't search for LQPColumns but still output a scan, so that we are able to predict the runtime
+    // of this scan.
+    auto left_table_name = NULL_VALUE;
+    auto left_column_name = NULL_VALUE;
+    auto right_table_name = NULL_VALUE;
+    auto right_column_name = NULL_VALUE;
+    auto scan_predicate_condition = NULL_VALUE;
+    auto column_type = pmr_string{"DATA"};
+    auto column_id = ColumnID{0};
+
+    const auto table_scan_op = dynamic_pointer_cast<const TableScan>(op);
+    Assert(table_scan_op, "Unexpected non-table-scan operators");
+    const auto& operator_perf_data = dynamic_cast<const TableScan::PerformanceData&>(*table_scan_op->performance_data);
+
     for (auto argument_id = size_t{0}; argument_id < predicate->arguments.size(); ++argument_id) {
-      const auto expression = predicate->arguments[argument_id];
-
-      auto table_name = NULL_VALUE;
-      AllTypeVariant column_name = NULL_VALUE;
-      AllTypeVariant scan_predicate_condition = NULL_VALUE;
-      auto column_type = pmr_string{"DATA"};
-
-      const auto table_scan_op = dynamic_pointer_cast<const TableScan>(op);
-      Assert(table_scan_op, "Unexpected non-table-scan operators");
-
-      const auto& operator_perf_data = dynamic_cast<const TableScan::PerformanceData&>(*table_scan_op->performance_data);
+      std::cout << "ARGUMENT " << argument_id << " of " << predicate->arguments.size() << std::endl;
+      const auto expression = predicate->arguments[argument_id];      
 
       if (expression->type != ExpressionType::LQPColumn &&
           !(predicate_lqp_column_count == 0 && argument_id == (predicate->arguments.size() - 1))) {
@@ -454,7 +458,11 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
           }
 
           const auto stored_table_node = std::dynamic_pointer_cast<const StoredTableNode>(original_node);
-          table_name = pmr_string{stored_table_node->table_name};
+          if (argument_id == 0) {
+            left_table_name = pmr_string{stored_table_node->table_name};  
+          } else if (argument_id == 1) {
+            right_table_name = pmr_string{stored_table_node->table_name};
+          }
 
           const auto operator_scan_predicates = OperatorScanPredicate::from_expression(*predicate, *stored_table_node);
           if (operator_scan_predicates->size() == 1) {
@@ -462,37 +470,45 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
             scan_predicate_condition = pmr_string{magic_enum::enum_name(condition)};
           }
 
+          Assert(!variant_is_null(left_table_name), "Unexpected NULL value for table name");
           const auto original_column_id = column_expression->original_column_id;
-          const auto table = Hyrise::get().storage_manager.get_table(std::string{boost::get<pmr_string>(table_name)});
+          // Using left_table_name should be safe here as it must be the same as right_table_name for ColumnVsColumn scans.
+          const auto table = Hyrise::get().storage_manager.get_table(std::string{boost::get<pmr_string>(left_table_name)});
           if (original_column_id != INVALID_COLUMN_ID) {
-            column_name = pmr_string{table->column_names()[original_column_id]};
+            if (argument_id == 0) {
+              left_column_name = pmr_string{table->column_names()[original_column_id]};
+            } else {
+              right_column_name = pmr_string{table->column_names()[original_column_id]};
+            }
           } else {
-            column_name = pmr_string{"COUNT(*)"};
+            if (argument_id == 0) {
+              left_column_name = pmr_string{"COUNT(*)"};
+            } else if (argument_id == 1) {
+              right_column_name = pmr_string{"COUNT(*)"};
+            }
           }
         } else {
           Fail("Unexpected path taken during LQPColumn analysis.");
         }
       }
 
-      auto column_id = ColumnID{0};
       try {
         column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
       } catch (...) {}
-
-      output_table->append({query_hex_hash, operator_hash(op), operator_hash(op->left_input()),
-                            column_type, table_name, column_name,
-                            estimate_pos_list_shuffledness(op, column_id),
-                            scan_predicate_condition,
-                            static_cast<int64_t>(operator_perf_data.num_chunks_with_early_out),
-                            static_cast<int64_t>(operator_perf_data.num_chunks_with_all_rows_matching),
-                            static_cast<int64_t>(operator_perf_data.num_chunks_with_binary_search),
-                            static_cast<int64_t>(op->left_input()->performance_data->output_chunk_count),
-                            static_cast<int64_t>(op->left_input()->performance_data->output_row_count),
-                            static_cast<int64_t>(operator_perf_data.output_chunk_count),
-                            static_cast<int64_t>(operator_perf_data.output_row_count),
-                            static_cast<int64_t>(operator_perf_data.walltime.count()),
-                            pmr_string{op->description()}});
     }
+    output_table->append({query_hex_hash, operator_hash(op), operator_hash(op->left_input()), column_type,
+                          left_table_name, left_column_name, right_table_name, right_column_name,
+                          estimate_pos_list_shuffledness(op, column_id),
+                          scan_predicate_condition,
+                          static_cast<int64_t>(operator_perf_data.num_chunks_with_early_out),
+                          static_cast<int64_t>(operator_perf_data.num_chunks_with_all_rows_matching),
+                          static_cast<int64_t>(operator_perf_data.num_chunks_with_binary_search),
+                          static_cast<int64_t>(op->left_input()->performance_data->output_chunk_count),
+                          static_cast<int64_t>(op->left_input()->performance_data->output_row_count),
+                          static_cast<int64_t>(operator_perf_data.output_chunk_count),
+                          static_cast<int64_t>(operator_perf_data.output_row_count),
+                          static_cast<int64_t>(operator_perf_data.walltime.count()),
+                          pmr_string{op->description()}});
   }
 
   return output_table;
