@@ -67,18 +67,30 @@ std::pair<double, std::optional<double>> estimate_pos_list_shuffledness(const st
       const auto projection_node = std::dynamic_pointer_cast<const ProjectionNode>(lqp_node);
 
       for (const auto& node_expression : projection_node->node_expressions) {
-        if (node_expression->type == ExpressionType::LQPColumn) {
+        if (node_expression->type != ExpressionType::LQPColumn) {
           return {0.0, std::nullopt};
         }
       }
+      return {1.0, std::nullopt};
     } else if (op->type() == OperatorType::JoinHash) {
       if (const auto join_hash_op = dynamic_pointer_cast<const JoinHash>(op)) {
-        // The hash join linearily walks over the input for semi/anti* joins. Thus it behaves like a scan. For all
-        // other join types, we must assume a shuffled pos list.
+        // The hash join linearily walks over the input for semi/anti* joins. Thus it behaves like a scan, the data
+        // does not get shuffled. The only exception are clustered semi/anti* joins. Radix clustering also yields more
+        // or less shuffled data. For all other join types, we always assume a shuffled pos list.
         if (join_hash_op->mode() != JoinMode::Semi &&
             join_hash_op->mode() != JoinMode::AntiNullAsTrue &&
             join_hash_op->mode() != JoinMode::AntiNullAsFalse) {
           return {1.0, std::nullopt};
+        }
+
+        const auto& operator_perf_data = dynamic_cast<const JoinHash::PerformanceData&>(*join_hash_op->performance_data);
+        if (operator_perf_data.radix_bits > 0 &&
+            (join_hash_op->mode() == JoinMode::Semi ||
+             join_hash_op->mode() == JoinMode::AntiNullAsTrue ||
+             join_hash_op->mode() == JoinMode::AntiNullAsFalse)) {
+          // In case we create two radix partitions, the data of each chunk is consecutive within each of the clusters.
+          // The higher the number of clusters, the smaller the consecutive write. Thus more shuffledness.
+          return {1.0 - (1.0 / std::pow(2, operator_perf_data.radix_bits)), std::nullopt};
         }
       }
     }
@@ -455,8 +467,7 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
     const auto& operator_perf_data = dynamic_cast<const TableScan::PerformanceData&>(*table_scan_op->performance_data);
 
     for (auto argument_id = size_t{0}; argument_id < predicate->arguments.size(); ++argument_id) {
-      std::cout << "ARGUMENT " << argument_id << " of " << predicate->arguments.size() << std::endl;
-      const auto expression = predicate->arguments[argument_id];      
+      const auto expression = predicate->arguments[argument_id];
 
       if (expression->type != ExpressionType::LQPColumn &&
           !(predicate_lqp_column_count == 0 && argument_id == (predicate->arguments.size() - 1))) {
@@ -489,7 +500,10 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
           Assert(!variant_is_null(left_table_name), "Unexpected NULL value for table name");
           const auto original_column_id = column_expression->original_column_id;
           // Using left_table_name should be safe here as it must be the same as right_table_name for ColumnVsColumn scans.
-          const auto table = Hyrise::get().storage_manager.get_table(std::string{boost::get<pmr_string>(left_table_name)});
+          auto table = Hyrise::get().storage_manager.get_table(std::string{boost::get<pmr_string>(left_table_name)});
+          if (argument_id == 1) {
+            table = Hyrise::get().storage_manager.get_table(std::string{boost::get<pmr_string>(right_table_name)});
+          }
           if (original_column_id != INVALID_COLUMN_ID) {
             if (argument_id == 0) {
               left_column_name = pmr_string{table->column_names()[original_column_id]};
