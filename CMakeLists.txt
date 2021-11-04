@@ -24,6 +24,7 @@ include_directories(                                                            
     # and the hash aggregate. Forward declaration does currently not work as we access internals of #
     # the operators' performance structs. For now, including is the easier way, but not necessarily #
     # the best or most beautiful way.                                                               #
+    ${PROJECT_SOURCE_DIR}/hyrise/third_party/compact_vector/include                                 #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/flat_hash_map                                          #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/magic_enum/include                                     #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/nlohmann_json/single_include  # encoding config        #
