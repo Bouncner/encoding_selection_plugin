@@ -26,6 +26,7 @@ include_directories(                                                            
     # the best or most beautiful way.                                                               #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/compact_vector/include                                 #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/flat_hash_map                                          #
+    ${PROJECT_SOURCE_DIR}/hyrise/third_party/fsst                                                   #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/magic_enum/include                                     #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/nlohmann_json/single_include  # encoding config        #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/robin-map/include                                      #
