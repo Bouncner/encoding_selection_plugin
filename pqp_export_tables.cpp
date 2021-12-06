@@ -17,6 +17,7 @@
 #include "operators/join_hash.hpp"
 #include "operators/operator_join_predicate.hpp"
 #include "operators/operator_scan_predicate.hpp"
+#include "operators/pqp_utils.hpp"
 #include "operators/projection.hpp"
 #include "operators/table_scan.hpp"
 
