@@ -17,6 +17,7 @@
 #include "operators/join_hash.hpp"
 #include "operators/operator_join_predicate.hpp"
 #include "operators/operator_scan_predicate.hpp"
+#include "operators/pqp_utils.hpp"
 #include "operators/projection.hpp"
 #include "operators/table_scan.hpp"
 
@@ -32,6 +33,8 @@ pmr_string operator_hash(const std::shared_ptr<const AbstractOperator>& op) {
 
   boost::hash_combine(seed, op);
   boost::hash_combine(seed, op->description());
+  const auto& perf_data = op->performance_data;
+  boost::hash_combine(seed, perf_data->walltime.count());
 
   std::stringstream pseudo_hash;
   pseudo_hash << std::hex << seed;
@@ -161,13 +164,17 @@ get_operators_from_plan_cache(const MetaPlanCacheOperators::PlanCache plan_cache
     const auto& frequency = snapshot_entry.frequency;
     Assert(frequency, "Optional frequency is unexpectedly unset.");
 
-    // We create two hashes. First, a (hopefully) unique hash for a PQP query. We use the actual PQP get different
+    // We create two hashes. First, a (hopefully) unique hash for a PQP query. We use the actual PQP to get different
     // hashes for the same SQL queries. This allows us to later differentiate between query instances without
     // requiring an additional key column.
     // Second, we have a hash von the SQL query string. This hash helps us to find identical queries.
     auto seed = size_t{0};
     boost::hash_combine(seed, physical_query_plan);
     boost::hash_combine(seed, sql_string);
+    visit_pqp(physical_query_plan, [&](const auto& node) {
+      boost::hash_combine(seed, operator_hash(node));
+      return PQPVisitation::VisitInputs;
+    });
     std::stringstream query_hex_hash;
     query_hex_hash << std::hex << seed;
     
