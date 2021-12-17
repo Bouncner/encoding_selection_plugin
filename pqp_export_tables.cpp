@@ -34,7 +34,8 @@ pmr_string operator_hash(const std::shared_ptr<const AbstractOperator>& op) {
   boost::hash_combine(seed, op);
   boost::hash_combine(seed, op->description());
   const auto& perf_data = op->performance_data;
-  boost::hash_combine(seed, perf_data->walltime.count());
+  boost::hash_combine(seed, perf_data->output_row_count);
+  boost::hash_combine(seed, static_cast<size_t>(perf_data->walltime.count()));
 
   std::stringstream pseudo_hash;
   pseudo_hash << std::hex << seed;
