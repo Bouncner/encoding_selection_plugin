@@ -417,8 +417,6 @@ MetaPlanCacheTableScans::MetaPlanCacheTableScans()
                                                {"right_column_name", DataType::String, true},
                                                shuffledness_column,
                                                {"predicate_condition", DataType::String, true},
-                                               {"right_side_is_correlated_subquery", DataType::Int, false},
-                                               {"right_table_row_count", DataType::Long, false},  // edge case: subqueries
                                                {"pruned_chunk_count", DataType::Long, false},
                                                {"all_rows_matched_count", DataType::Long, false},
                                                {"binary_search_count", DataType::Long, false},
@@ -535,7 +533,7 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
     output_table->append({query_hex_hash, query_statement_hex_hash, operator_hash(op), operator_hash(op->left_input()), column_type,
                           left_table_name, left_column_name, right_table_name, right_column_name,
                           estimate_pos_list_shuffledness(op, column_id).first,
-                          scan_predicate_condition, false, 1ul,
+                          scan_predicate_condition,
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_early_out),
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_all_rows_matching),
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_binary_search),
