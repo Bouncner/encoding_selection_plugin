@@ -27,13 +27,13 @@ enum class CompressionApplicationMode { Sequential, Scheduler, OSThreads };
 void apply_compression_configuration(const std::string& json_configuration_path, CompressionApplicationMode mode,
 																		 size_t task_count = 0ul) {
   Assert(std::filesystem::is_regular_file(json_configuration_path), "No such file: " + json_configuration_path);
-  Assert(mode != CompressionApplicationMode::Sequential, "Sequnential compression  mode is not implemented.");
+  Assert(mode != CompressionApplicationMode::Sequential, "Sequential compression mode is not implemented.");
   
   std::stringstream ss;
-  ss << "Starting to apply compression configuration " + json_configuration_path
-  	 << " (mode: " << magic_enum::enum_name(mode);
+  ss << "Starting to apply compression configuration '" + json_configuration_path
+  	 << "' (mode: " << magic_enum::enum_name(mode);
   if (task_count != 0) {
-  	ss << ", task count: " << task_count;
+  	ss << ", thread count: " << task_count;
   }
   ss << ").";
   Hyrise::get().log_manager.add_message("CommandExecutorPlugin", ss.str(), LogLevel::Info);
@@ -51,8 +51,6 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 	auto encoded_segment_count = std::atomic_int{0};
 	auto& storage_manager = Hyrise::get().storage_manager;
 	for (const auto& [table_name, chunk_configs] : config["configuration"].items()) {
-	  auto active_jobs = std::atomic_int{0};
-
 		const auto& table = storage_manager.get_table(table_name);
 		const auto& chunk_count = table->chunk_count();
 		const auto& column_count = table->column_count();
@@ -75,11 +73,10 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 				encoding_specs[column_id] = segment_encoding_spec;
 			}
 
-			chunk_encoding_functors.push_back([&, chunk_id, encoding_specs] {
-				const auto& chunk = table->get_chunk(ChunkID{chunk_id});
-				ChunkEncoder::encode_chunk(chunk, data_types, encoding_specs);
+			chunk_encoding_functors.push_back([&, table_name=table_name, chunk_id, encoding_specs] {
+				const auto& chunk = table->get_chunk(ChunkID{static_cast<uint32_t>(chunk_id)});
+        ChunkEncoder::encode_chunk(chunk, data_types, encoding_specs);
 				encoded_segment_count += encoding_specs.size();
-        --active_jobs;
 			});
 		}
 
@@ -90,7 +87,8 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 
     auto next_task = std::atomic_uint{0};
     if (mode == CompressionApplicationMode::OSThreads) {
-      const auto thread_count = std::min(static_cast<size_t>(chunk_count), task_count);
+      auto thread_count = task_count == 0 ? std::thread::hardware_concurrency() : task_count;
+      thread_count = std::min(static_cast<size_t>(chunk_count), thread_count);
       auto threads = std::vector<std::thread>{};
       threads.reserve(thread_count);
 
@@ -108,18 +106,17 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 	    for (auto& thread : threads) thread.join();
     } else if (mode == CompressionApplicationMode::Scheduler) {
       auto jobs = std::vector<std::shared_ptr<AbstractTask>>{};
-      const auto job_count = std::min(static_cast<size_t>(chunk_count), task_count);
-      for (auto job_id = 0u; job_id < job_count; ++job_id) {
-        jobs.emplace_back(std::make_shared<JobTask>([&] {
-          while (true) {
-            const auto my_task_id = next_task++;
-            if (my_task_id >= chunk_encoding_functors.size()) return;
-
-            chunk_encoding_functors[my_task_id]();
-          }
+      jobs.reserve(chunk_count);
+    
+      const auto functor_count = chunk_encoding_functors.size();
+      for (auto job_id = 0u; job_id < functor_count; ++job_id) {
+        jobs.emplace_back(std::make_shared<JobTask>([&, job_id] {
+          chunk_encoding_functors[job_id]();
         }));
-      }
+      } 
       Hyrise::get().scheduler()->schedule_and_wait_for_tasks(jobs);
+    } else {
+      Fail("Unsupported mode");
     }
 	}
 	Assert(segment_count == static_cast<int64_t>(encoded_segment_count), "JSON did probably not include encoding specifications for all segments (of "
@@ -146,8 +143,10 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   const auto command = Hyrise::get().settings_manager.get_setting("Plugin::Executor::Command")->get();
   if (command == "DROP PQP PLANCACHE") {
   	Hyrise::get().default_pqp_cache->clear();
+  	Hyrise::get().log_manager.add_message("CommandExecutorPlugin", "Dropped PQP cache", LogLevel::Info);
   } else if (command == "DROP LQP PLANCACHE") {
   	Hyrise::get().default_lqp_cache->clear();
+  	Hyrise::get().log_manager.add_message("CommandExecutorPlugin", "Dropped LQP cache", LogLevel::Info);
   } else if (command.starts_with("SET SERVER CORES ")) {
   	const auto last_space_pos = command.find_last_of(' ');
   	const auto core_count = std::stoul(command.substr(last_space_pos + 1));
@@ -155,10 +154,12 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   	std::stringstream ss;
   	ss << "Set Hyrise scheduler to use " << core_count << " cores.";
   	Hyrise::get().log_manager.add_message("CommandExecutorPlugin", ss.str(), LogLevel::Info);
+  	Hyrise::get().scheduler()->finish();
   	Hyrise::get().topology.use_default_topology(core_count);
   	// reset scheduler
   	Hyrise::get().set_scheduler(std::make_shared<NodeQueueScheduler>());
   } else if (command.starts_with("APPLY COMPRESSION CONFIGURATION ")) {
+  	std::stringstream ss;
   	auto apply_compression_config = std::vector<std::string>{};
 		// Split benchmark name and sizing factor
 		boost::split(apply_compression_config, command, boost::is_any_of(" "), boost::token_compress_on);
@@ -168,8 +169,8 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
 		const auto file_path_str = apply_compression_config[3];
 		if (apply_compression_config.size() == 4) {
 		  apply_compression_configuration(file_path_str, CompressionApplicationMode::OSThreads, std::thread::hardware_concurrency());
-		  output_table->append({pmr_string{"Executed successful."}});
-	  	  return output_table;
+		  output_table->append({pmr_string{"Command executed successfully."}});
+	  	return output_table;
 		}
 
   	const auto mode = magic_enum::enum_cast<CompressionApplicationMode>(apply_compression_config[4]);
@@ -183,19 +184,17 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   	}
 
   	if (apply_compression_config.size() == 6) {
-  	  const auto thread_count = apply_compression_config[5] == "0" ?
-  	  							std::thread::hardware_concurrency() : std::stoul(apply_compression_config[5]);
-		  apply_compression_configuration(file_path_str, *mode, thread_count);
-		  output_table->append({pmr_string{"Executed successful."}});
-	  	 return output_table;
+		  apply_compression_configuration(file_path_str, *mode, std::stoul(apply_compression_config[5]));
+		  output_table->append({pmr_string{"Command executed successfully."}}); 
+	    return output_table;
 		}
 		apply_compression_configuration(file_path_str, *mode);
   } else {
   	output_table->append({pmr_string{"Unknown command."}});
   	return output_table;
   }
-  
-  output_table->append({pmr_string{"Executed successful."}});
+ 
+  output_table->append({pmr_string{"Command executed successfully."}});
   return output_table;
 }
 
