@@ -190,15 +190,11 @@ get_operators_from_plan_cache(const MetaPlanCacheOperators::PlanCache plan_cache
 }
 
 // TODO: we might switch from a boolean return value to keep track of single columns, this might be especially
-// important for joins along the way (as with projections since Oct/Nov 2020).
+// important for joins along the way (as with projections since Oct/Nov 2020, where we partially forward columns and
+// materialize others if required).
 bool operator_result_is_probably_materialized(const std::shared_ptr<const AbstractOperator>& op) {
   auto left_input_table_probably_materialized = false;
   auto right_input_table_probably_materialized = false;
-
-  // TODO: going up will always yield true here ...  removed: ` || op->type() == OperatorType::GetTable`
-  // if (op->type() == OperatorType::Aggregate) {
-  //   return true;
-  // }
 
   if (op->type() == OperatorType::Projection) {
     const auto node = op->lqp_node;
@@ -420,6 +416,8 @@ MetaPlanCacheTableScans::MetaPlanCacheTableScans()
                                                {"right_column_name", DataType::String, true},
                                                shuffledness_column,
                                                {"predicate_condition", DataType::String, true},
+                                               {"right_side_is_correlated_subquery", DataType::Int, false},
+                                               {"right_table_row_count", DataType::Long, false},  // edge case: subqueries
                                                {"pruned_chunk_count", DataType::Long, false},
                                                {"all_rows_matched_count", DataType::Long, false},
                                                {"binary_search_count", DataType::Long, false},
@@ -532,10 +530,11 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
         column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
       } catch (...) {}
     }
+    // TODO: the appended "false" is for correlated subqueries. We should include them as they lead to major problems with TPC-DS.
     output_table->append({query_hex_hash, query_statement_hex_hash, operator_hash(op), operator_hash(op->left_input()), column_type,
                           left_table_name, left_column_name, right_table_name, right_column_name,
                           estimate_pos_list_shuffledness(op, column_id).first,
-                          scan_predicate_condition,
+                          scan_predicate_condition, false, 1ul,
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_early_out),
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_all_rows_matching),
                           static_cast<int64_t>(operator_perf_data.num_chunks_with_binary_search),
