@@ -105,13 +105,19 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 
 	    for (auto& thread : threads) thread.join();
     } else if (mode == CompressionApplicationMode::Scheduler) {
+      // TODO: merge thread and scheduler code paths
+      auto job_count = task_count == 0 ? chunk_encoding_functors.size() : task_count;
       auto jobs = std::vector<std::shared_ptr<AbstractTask>>{};
-      jobs.reserve(chunk_count);
-    
-      const auto functor_count = chunk_encoding_functors.size();
-      for (auto job_id = 0u; job_id < functor_count; ++job_id) {
-        jobs.emplace_back(std::make_shared<JobTask>([&, job_id] {
-          chunk_encoding_functors[job_id]();
+      jobs.reserve(job_count);
+
+      for (auto job_id = 0u; job_id < job_count; ++job_id) {
+        jobs.emplace_back(std::make_shared<JobTask>([&] {
+          while (true) {
+            const auto my_task_id = next_task++;
+            if (my_task_id >= chunk_encoding_functors.size()) return;
+
+            chunk_encoding_functors[my_task_id]();
+          }
         }));
       } 
       Hyrise::get().scheduler()->schedule_and_wait_for_tasks(jobs);
