@@ -77,7 +77,7 @@ std::pair<double, std::optional<double>> estimate_pos_list_shuffledness(const st
       }
       return {1.0, std::nullopt};
     } else if (op->type() == OperatorType::JoinHash) {
-      if (const auto join_hash_op = dynamic_pointer_cast<const JoinHash>(op)) {
+      if (const auto join_hash_op = std::dynamic_pointer_cast<const JoinHash>(op)) {
         // The hash join linearily walks over the input for semi/anti* joins. Thus it behaves like a scan, the data
         // does not get shuffled. The only exception are clustered semi/anti* joins. Radix clustering also yields more
         // or less shuffled data. For all other join types, we always assume a shuffled pos list.
@@ -384,7 +384,7 @@ std::shared_ptr<Table> MetaPlanCacheAggregates::_on_generate() const {
         static_cast<int64_t>(perf_data->output_chunk_count),
         static_cast<int64_t>(perf_data->output_row_count)};
 
-      if (const auto aggregate_hash_op = dynamic_pointer_cast<const AggregateHash>(op)) {
+      if (const auto aggregate_hash_op = std::dynamic_pointer_cast<const AggregateHash>(op)) {
         const auto& operator_perf_data = dynamic_cast<const OperatorPerformanceData<AggregateHash::OperatorSteps>&>(*aggregate_hash_op->performance_data);
         for (const auto step_name : magic_enum::enum_values<AggregateHash::OperatorSteps>()) {
           values_to_append.push_back(static_cast<int64_t>(operator_perf_data.get_step_runtime(step_name).count()));
@@ -466,7 +466,7 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
     auto column_type = pmr_string{"DATA"};
     auto column_id = ColumnID{0};
 
-    const auto table_scan_op = dynamic_pointer_cast<const TableScan>(op);
+    const auto table_scan_op = std::dynamic_pointer_cast<const TableScan>(op);
     Assert(table_scan_op, "Unexpected non-table-scan operators");
     const auto& operator_perf_data = dynamic_cast<const TableScan::PerformanceData&>(*table_scan_op->performance_data);
 
@@ -699,7 +699,7 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
           static_cast<int64_t>(perf_data->output_chunk_count),
           static_cast<int64_t>(perf_data->output_row_count)};
 
-        if (const auto join_hash_op = dynamic_pointer_cast<const JoinHash>(op)) {
+        if (const auto join_hash_op = std::dynamic_pointer_cast<const JoinHash>(op)) {
           const auto& operator_perf_data = dynamic_cast<const JoinHash::PerformanceData&>(*join_hash_op->performance_data);
           values_to_append.push_back(static_cast<int32_t>(!operator_perf_data.left_input_is_build_side));
           values_to_append.push_back(static_cast<int32_t>(operator_perf_data.radix_bits));
@@ -884,7 +884,7 @@ std::shared_ptr<Table> MetaPlanCacheGetTables::_on_generate() const {
 
   const auto get_tables = get_operators_from_plan_cache(_plan_cache_snapshot ? *_plan_cache_snapshot : Hyrise::get().default_pqp_cache->snapshot(), OperatorType::GetTable);
   for (const auto& [query_hex_hash, query_statement_hex_hash, op] : get_tables) {
-    const auto get_table_op = dynamic_pointer_cast<const GetTable>(op);
+    const auto get_table_op = std::dynamic_pointer_cast<const GetTable>(op);
     Assert(get_table_op, "Processing GetTable operator but another operator was passed.");
 
     const auto& operator_perf_data = op->performance_data;
