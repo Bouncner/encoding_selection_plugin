@@ -12,7 +12,7 @@
 
 namespace {
 
-using namespace opossum;  // NOLINT
+using namespace hyrise;  // NOLINT
 
 // Shamelessly copied from tpcds_benchmark.cpp. TODO(anyone): move to DS benchmark class?
 std::unordered_set<std::string> filename_blacklist() {
@@ -78,7 +78,7 @@ class FileBasedBenchmarkItemExporter : public FileBasedBenchmarkItemRunner {
 }  // namespace
 
 
-namespace opossum {
+namespace hyrise {
 
 MetaBenchmarkItems::MetaBenchmarkItems()
     : AbstractMetaTable(TableColumnDefinitions{{"benchmark_name", DataType::String, false},
@@ -131,4 +131,4 @@ void WorkloadHandlerPlugin::stop() {}
 
 EXPORT_PLUGIN(WorkloadHandlerPlugin)
 
-}  // namespace opossum
+}  // namespace hyrise

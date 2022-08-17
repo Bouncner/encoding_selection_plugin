@@ -24,7 +24,6 @@ include_directories(                                                            
     # and the hash aggregate. Forward declaration does currently not work as we access internals of #
     # the operators' performance structs. For now, including is the easier way, but not necessarily #
     # the best or most beautiful way.                                                               #
-    ${PROJECT_SOURCE_DIR}/hyrise/third_party/compact_vector/include                                 #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/flat_hash_map                                          #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/fsst                                                   #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/magic_enum/include                                     #
@@ -42,6 +41,9 @@ include_directories(                                                            
     # TBB as system include to ignore error: 'const volatile long long' is deprecated               #
     ${TBB_INCLUDE_DIR}                                                                              #
                                                                                                     #
+    # Deprecation error with 0.1.0                                                                  #
+    ${PROJECT_SOURCE_DIR}/hyrise/third_party/compact_vector/include                                 #
+                                                                                                    #
     ${PROJECT_SOURCE_DIR}/hyrise/third_party/                                                       #
 )                                                                                                   #
                                                                                                     #
@@ -56,16 +58,16 @@ set(CMAKE_CXX_STANDARD 20)                                                      
 #####################################################################################################
 
 ### Plugin to generate meta tables for exported PQP information
-add_plugin(NAME WorkloadStatisticsPlugin SRCS pqp_export_tables.cpp pqp_export_tables.hpp DEPS hyriseServer)
+add_plugin(NAME WorkloadStatisticsPlugin SRCS pqp_export_tables.cpp pqp_export_tables.hpp)
 
 ### Plugin to expose benchmark queries as a meta table and run TPC-C
-add_plugin(NAME WorkloadHandlerPlugin SRCS workload_handler.cpp workload_handler.hpp DEPS hyriseServer)
+add_plugin(NAME WorkloadHandlerPlugin SRCS workload_handler.cpp workload_handler.hpp)
 
 ### Plugin to accept simple commands
-add_plugin(NAME CommandExecutorPlugin SRCS command_executor.cpp command_executor.hpp DEPS hyriseServer)
+add_plugin(NAME CommandExecutorPlugin SRCS command_executor.cpp command_executor.hpp)
 
 ### Plugin to provide a data table with additional data characteristics
-add_plugin(NAME DataCharacteristicsPlugin SRCS data_characteristics.cpp data_characteristics.hpp DEPS hyriseServer)
+add_plugin(NAME DataCharacteristicsPlugin SRCS data_characteristics.cpp data_characteristics.hpp)
 
 
 # Add a link to resources/ at the root of the build directory.

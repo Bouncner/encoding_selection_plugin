@@ -7,7 +7,7 @@
 #include "storage/create_iterable_from_segment.hpp"
 
 
-namespace opossum {
+namespace hyrise {
 
 MetaDataCharacteristics::MetaDataCharacteristics()
     : AbstractMetaTable(TableColumnDefinitions{{"table_name", DataType::String, false},
@@ -95,4 +95,4 @@ void DataCharacteristicsPlugin::stop() {}
 
 EXPORT_PLUGIN(DataCharacteristicsPlugin)
 
-}  // namespace opossum
+}  // namespace hyrise

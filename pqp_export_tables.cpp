@@ -5,6 +5,7 @@
 #include "expression/abstract_predicate_expression.hpp"
 #include "expression/expression_utils.hpp"
 #include "expression/lqp_column_expression.hpp"
+#include "expression/lqp_subquery_expression.hpp"
 #include "logical_query_plan/aggregate_node.hpp"
 #include "logical_query_plan/join_node.hpp"
 #include "logical_query_plan/predicate_node.hpp"
@@ -24,7 +25,7 @@
 
 namespace {
 
-using namespace opossum;  // NOLINT
+using namespace hyrise;  // NOLINT
 
 const auto shuffledness_column = TableColumnDefinition{"input_shuffledness", DataType::Double, false};
 
@@ -239,7 +240,7 @@ std::string camel_to_csv_row_title(const std::string& title) {
 }  // namespace
 
 
-namespace opossum {
+namespace hyrise {
 
 void MetaPlanCacheOperators::set_plan_cache_snapshot(const std::unordered_map<std::string, PlanCacheSnapshotEnty> plan_cache_snapshot) {
   _plan_cache_snapshot = plan_cache_snapshot;
@@ -425,6 +426,8 @@ MetaPlanCacheTableScans::MetaPlanCacheTableScans()
                                                {"input_row_count", DataType::Long, false},
                                                {"output_chunk_count", DataType::Long, false},
                                                {"output_row_count", DataType::Long, false},
+                                               {"is_correlated_subquery", DataType::Int, false},
+                                               {"is_uncorrelated_subquery", DataType::Int, false},
                                                {"runtime_ns", DataType::Long, false},
                                                {"description", DataType::String, false}}), MetaPlanCacheOperators() {}
 
@@ -465,6 +468,8 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
     auto scan_predicate_condition = NULL_VALUE;
     auto column_type = pmr_string{"DATA"};
     auto column_id = ColumnID{0};
+    auto is_correlated_subquery = false;
+    auto is_uncorrelated_subquery = false;
 
     const auto table_scan_op = std::dynamic_pointer_cast<const TableScan>(op);
     Assert(table_scan_op, "Unexpected non-table-scan operators");
@@ -472,6 +477,12 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
 
     for (auto argument_id = size_t{0}; argument_id < predicate->arguments.size(); ++argument_id) {
       const auto expression = predicate->arguments[argument_id];
+
+      if (expression->type == ExpressionType::LQPSubquery) {
+        const auto lqp_subquery_expression = std::dynamic_pointer_cast<LQPSubqueryExpression>(expression);
+        is_correlated_subquery = lqp_subquery_expression->is_correlated();
+        is_uncorrelated_subquery = !lqp_subquery_expression->is_correlated();
+      }
 
       if (expression->type != ExpressionType::LQPColumn &&
           !(predicate_lqp_column_count == 0 && argument_id == (predicate->arguments.size() - 1))) {
@@ -530,7 +541,7 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
         column_id = node->left_input()->get_column_id(*predicate->arguments[0]);
       } catch (...) {}
     }
-    // TODO: the appended "false" is for correlated subqueries. We should include them as they lead to major problems with TPC-DS.
+
     output_table->append({query_hex_hash, query_statement_hex_hash, operator_hash(op), operator_hash(op->left_input()), column_type,
                           left_table_name, left_column_name, right_table_name, right_column_name,
                           estimate_pos_list_shuffledness(op, column_id).first,
@@ -542,6 +553,8 @@ std::shared_ptr<Table> MetaPlanCacheTableScans::_on_generate() const {
                           static_cast<int64_t>(op->left_input()->performance_data->output_row_count),
                           static_cast<int64_t>(operator_perf_data.output_chunk_count),
                           static_cast<int64_t>(operator_perf_data.output_row_count),
+                          static_cast<int32_t>(is_correlated_subquery),
+                          static_cast<int32_t>(is_uncorrelated_subquery),
                           static_cast<int64_t>(operator_perf_data.walltime.count()),
                           pmr_string{op->description()}});
   }
@@ -968,4 +981,4 @@ void PQPExportTablesPlugin::stop() {}
 
 EXPORT_PLUGIN(PQPExportTablesPlugin)
 
-}  // namespace opossum
+}  // namespace hyrise

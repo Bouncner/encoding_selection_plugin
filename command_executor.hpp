@@ -6,7 +6,7 @@
 #include "utils/singleton.hpp"
 
 
-namespace opossum {
+namespace hyrise {
 
 class MetaCommandExecutor : public AbstractMetaTable {
  public:
@@ -43,4 +43,4 @@ class CommandExecutorPlugin : public AbstractPlugin, public Singleton<CommandExe
   std::shared_ptr<CommandExecutorSetting> _command_setting;
 };
 
-}  // namespace opossum
+}  // namespace hyrise

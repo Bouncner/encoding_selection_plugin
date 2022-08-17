@@ -5,7 +5,7 @@
 #include "utils/singleton.hpp"
 
 
-namespace opossum {
+namespace hyrise {
 
 class MetaBenchmarkItems : public AbstractMetaTable {
  public:
@@ -26,4 +26,4 @@ class WorkloadHandlerPlugin : public AbstractPlugin, public Singleton<WorkloadHa
   void stop() final;
 };
 
-}  // namespace opossum
+}  // namespace hyrise

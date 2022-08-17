@@ -6,7 +6,7 @@
 #include "utils/meta_tables/abstract_meta_table.hpp"
 #include "utils/singleton.hpp"
 
-namespace opossum {
+namespace hyrise {
 
 class MetaDataCharacteristics : public AbstractMetaTable {
  public:
@@ -25,4 +25,4 @@ class DataCharacteristicsPlugin : public AbstractPlugin, public Singleton<DataCh
   void stop() final;
 };
 
-}  // namespace opossum
+}  // namespace hyrise

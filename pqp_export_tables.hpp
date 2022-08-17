@@ -6,7 +6,7 @@
 #include "utils/meta_tables/abstract_meta_table.hpp"
 #include "utils/singleton.hpp"
 
-namespace opossum {
+namespace hyrise {
 
 class MetaPlanCacheOperators {
  public:
@@ -99,4 +99,4 @@ class PQPExportTablesPlugin : public AbstractPlugin, public Singleton<PQPExportT
   void stop() final;
 };
 
-}  // namespace opossum
+}  // namespace hyrise

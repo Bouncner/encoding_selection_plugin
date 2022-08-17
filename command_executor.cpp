@@ -20,7 +20,7 @@
 
 namespace {
   
-using namespace opossum;  // NOLINT
+using namespace hyrise;  // NOLINT
 
 enum class CompressionApplicationMode { Sequential, Scheduler, OSThreads };
 
@@ -133,7 +133,7 @@ void apply_compression_configuration(const std::string& json_configuration_path,
 }
 
 
-namespace opossum {
+namespace hyrise {
 
 MetaCommandExecutor::MetaCommandExecutor()
     : AbstractMetaTable(TableColumnDefinitions{{"command", DataType::String, false}}) {}
@@ -186,7 +186,7 @@ std::shared_ptr<Table> MetaCommandExecutor::_on_generate() const {
   	  	modes_str += " ";
   	  	modes_str += mode;
   	  }
-  	  Fail("Unknown mode. Mode must be one of:" + modes_str);
+  	  Fail("Unknown mode. Mode must be one of: " + modes_str);
   	}
 
   	if (apply_compression_config.size() == 6) {
@@ -222,4 +222,4 @@ void CommandExecutorPlugin::stop() {
 
 EXPORT_PLUGIN(CommandExecutorPlugin)
 
-}  // namespace opossum
+}  // namespace hyrise
