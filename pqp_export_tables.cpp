@@ -679,14 +679,14 @@ std::shared_ptr<Table> MetaPlanCacheJoins::_on_generate() const {
         // The idea of flipping is that the predicates are in the order (left/right) as the join input tables are.
         // We pull the stored table information from the LQP nodes, thus we need to flip the information that is gathered
         // from the LQP nodes. However, when we check for the join predicate's stored table node input (if there is
-        // any), we take the original input since inputs are  not flipped (only the predicate).
+        // any), we take the original input since inputs are not flipped (only the predicate).
         const auto [left_table_name, left_column_name, left_column_type] = operator_predicate->is_flipped() ?
             obtain_column_information(join_predicate_expression->arguments[1], node->left_input()) :
-            obtain_column_information(join_predicate_expression->arguments[0], node->right_input());
+            obtain_column_information(join_predicate_expression->arguments[0], node->left_input());
 
         const auto [right_table_name, right_column_name, right_column_type] = operator_predicate->is_flipped() ?
             obtain_column_information(join_predicate_expression->arguments[0], node->right_input()) :
-            obtain_column_information(join_predicate_expression->arguments[1], node->left_input());
+            obtain_column_information(join_predicate_expression->arguments[1], node->right_input());
 
         const auto& left_input_perf_data = op->left_input()->performance_data;
         const auto& right_input_perf_data = op->right_input()->performance_data;
