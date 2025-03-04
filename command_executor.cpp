@@ -74,6 +74,10 @@ void apply_compression_configuration(const std::string& json_configuration_path,
       }
 
       chunk_encoding_functors.push_back([&, table_name=table_name, chunk_id, encoding_specs] {
+        if (chunk_id >= chunk_count) {
+          std::cerr << "WARNING: configuration attempts applying encoding to an invalide chunkID.\n";
+          return;
+        }
         const auto& chunk = table->get_chunk(ChunkID{static_cast<uint32_t>(chunk_id)});
         ChunkEncoder::encode_chunk(chunk, data_types, encoding_specs);
         encoded_segment_count += encoding_specs.size();
